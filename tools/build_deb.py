@@ -23,6 +23,15 @@ DEPENDENCIES = (
 def tar_bytes(files, epoch):
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode='w', format=tarfile.GNU_FORMAT) as archive:
+        # dpkg requires parent directories to be explicit archive members.
+        directories = {str(parent) for name in files for parent in PurePosixPath(name).parents if str(parent) != '.'}
+        for name in sorted(directories, key=lambda value: (value.count('/'), value)):
+            info = tarfile.TarInfo('./' + name)
+            info.type = tarfile.DIRTYPE
+            info.mode, info.mtime = 0o755, epoch
+            info.uid = info.gid = 0
+            info.uname = info.gname = 'root'
+            archive.addfile(info)
         for name, (content, mode) in sorted(files.items()):
             info = tarfile.TarInfo('./' + name)
             info.size, info.mode, info.mtime = len(content), mode, epoch

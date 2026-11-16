@@ -55,6 +55,12 @@ def test_debian_reproducible_layout_and_dependencies(wheel, tmp_path):
         assert 'python3-jsonschema (>= 4.10)' in control
         assert not {'./postinst', './preinst'} & set(archive.getnames())
     with tarfile.open(fileobj=io.BytesIO(members['data.tar.gz'])) as archive:
+        preceding_directories = set()
+        for member in archive.getmembers():
+            if member.isdir():
+                preceding_directories.add(member.name)
+            else:
+                assert str(Path(member.name).parent) in {str(Path(name)) for name in preceding_directories}
         assert archive.getmember('./usr/bin/shruta').mode == 0o755
         assert not any(name.endswith('/RECORD') for name in archive.getnames())
         assert archive.extractfile('./usr/bin/shruta').read().startswith(b'#!/usr/bin/python3')
