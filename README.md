@@ -6,16 +6,19 @@ Shrutadhara is a Sanskrit-inspired name meaning “one who retains what has been
 
 A small native GTK 4 window and Python CLI for private Teams-for-Linux recording on PipeWire. Audio capture works independently of optional hosted `agy` processing. The GUI uses the GTK/Python bindings already installed on CachyOS; it has no bundled browser, Electron runtime, web server, or tray dependency.
 
-**Current validation:** capture, local processing, GUI, and mocked tests are implemented. The four application correctness defects found in the independent review have regression fixes. A short native `agy` probe passed, but the full synthetic integration misrecognized known speech. The capability cache remains revoked, so automated meeting transcription remains blocked pending representative validation. See [VALIDATION.md](VALIDATION.md) for evidence and outstanding checks. The source is MIT licensed; public distribution and live acceptance testing remain pending.
+**Current validation:** this is experimental software. Capture, local processing, GUI, and mocked tests are implemented. The four application correctness defects found in the independent review have regression fixes. A short native `agy` probe passed, but the full synthetic integration misrecognized known speech. The capability cache remains revoked, so automated meeting transcription remains blocked pending representative validation. See [VALIDATION.md](VALIDATION.md) for evidence and outstanding checks. The source is MIT licensed; package-registry distribution and broader live acceptance testing remain pending.
 
 ## Install and open
 
 ```bash
-cd shrutadhara # checkout or extracted source archive
+git clone https://github.com/Praneel7015/shrutadhara.git
+cd shrutadhara
 bash install.sh
 shruta doctor
 shruta gui
 ```
+
+For a hands-on recording, playback and optional AI validation workflow, see the [test-drive guide](docs/TEST_DRIVE.md).
 
 `shruta show` also opens or focuses the window. `shruta start` returns the current active session when already recording, and repeated `shruta stop` is safe. Keep user-facing recording notices enabled.
 

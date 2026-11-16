@@ -4,7 +4,7 @@
 
 **Implementation progress:** P0's four correctness fixes are implemented and independently retested. The tree now also has portable desktop/source packaging, a private npm local-wheel launcher, configurable GTK shortcuts/manual compositor setup, contributor/CI scaffolding and an agy-only provider interface. Additional providers, portal shortcuts, public publication and SaaS remain future work. Current validation is in VALIDATION.md; this roadmap's original starting-point assessment is historical.
 
-The owner subsequently selected MIT. License/NOTICE files are included, and the voice fixture with unclear generator licensing is excluded from packages. Public naming and publication remain pending; the license discussion below records the earlier planning options.
+The owner subsequently selected MIT and the `shrutadhara` name. License/NOTICE files are included, and the voice fixture with unclear generator licensing is excluded from packages. Source repository: https://github.com/Praneel7015/shrutadhara. Registry publication remains pending; the license discussion below records the earlier planning options.
 
 Prepared 2026-11-16 from README.md, VALIDATION.md, pyproject.toml, install.py and the capture, GUI, CLI, configuration, processing and agy code. Read ASTRA_REVIEW.md; its reproductions remain the source of detail for correctness defects. This document proposes work; it does not enable processing, change configuration, or promise features already exist.
 

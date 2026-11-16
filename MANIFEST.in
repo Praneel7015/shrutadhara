@@ -4,3 +4,4 @@ recursive-include desktop *
 recursive-include npm *.json *.js *.md
 recursive-include tests *.py
 recursive-include tools *.py
+recursive-include docs *.md

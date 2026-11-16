@@ -18,6 +18,14 @@ The project was subsequently named **Shrutadhara (श्रुतधर)**, with
 
 Current local verification: **117 tests passed**, Ruff checks passed, and the final Shrutadhara wheel/source/npm artifacts passed the release-content check. The actual packed npm tarball and wheel were installed into a fresh isolated HOME/XDG environment; version/help/Q&A help/provider listing/shortcut help/desktop installation and installed GTK/jsonschema imports passed without importing application code from the checkout. No co-author trailers are added to commits.
 
+## 2026-11-17 local test drive and source publication
+
+A user-authorized 30-second microphone test completed normally (approximately 31 seconds including startup/finalization), with no recorded gaps or finalization errors. Microphone and combined audio contained sound; the participants track was silent, matching the user's confirmation that no Teams audio was played. All three WAV exports validated. The microphone reached full scale and triggered a possible-clipping warning; gain/playback review remains necessary.
+
+Local `process --prepare-only` produced two ordered chunks without uploads. The session stopped, moved streams were restored and no session routing modules remained. The microphone WAV was opened locally in mpv paused for user review. Recordings, transcripts, configuration and private logs are excluded from source publication.
+
+The complete 117-test suite, Ruff, compilation, desktop-entry validation, release artifact checks and a redacted Git-history secret scan passed before pushing source to https://github.com/Praneel7015/shrutadhara. The repository is experimental; npm/PyPI/AUR publication and broader live/AI acceptance are separate work. No meeting audio was uploaded during this validation.
+
 ## Passed
 
 - 60 isolated automated tests, with external audio/AI tools mocked: state transitions, locking, routing ownership, FFmpeg construction, crash recovery, exact splitting/offsets, overlap, parsing, bounded retries/timeouts, resume, imported provenance, evidence, consent and GUI state.
