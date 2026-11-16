@@ -1,0 +1,11 @@
+{
+  "name": "shrutadhara",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Unpublished Linux launcher for Shrutadhara, the local-first AI meeting assistant",
+  "os": ["linux"],
+  "bin": {"shruta": "launcher.js"},
+  "files": ["launcher.js", "README.md", "NOTICE"],
+  "engines": {"node": ">=18"}
+}

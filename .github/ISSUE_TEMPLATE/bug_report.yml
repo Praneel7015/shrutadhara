@@ -1,0 +1,24 @@
+name: Bug report
+description: Report a reproducible Shrutadhara issue using redacted diagnostics.
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include meeting recordings, dialogue, personal meeting titles, API keys or private provider logs. Prefer synthetic reproductions."
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Include exact commands and synthetic input details.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions and redacted diagnostics
+      description: Distribution, desktop/compositor, Python, PipeWire, GTK and shruta version; redacted shruta doctor output.

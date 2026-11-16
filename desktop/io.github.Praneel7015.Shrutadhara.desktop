@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Shrutadhara
+Comment=Local meeting recording with optional AI processing
+Exec=shruta show
+Icon=audio-input-microphone
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupNotify=true
+X-Shrutadhara=true

@@ -1,0 +1,13 @@
+[Unit]
+Description=Teams call notifications for Shrutadhara (no automatic recording)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/shruta watch
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target

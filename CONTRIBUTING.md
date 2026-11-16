@@ -1,0 +1,11 @@
+# Contributing
+
+Use **Shrutadhara** in the UI, **`shruta`** in CLI examples, and **`shrutadhara`** for imports, package metadata, configuration directories and repository references. Historical names should appear only in migration handling/tests or clearly labeled historical evidence. The philosophy is “Hear everything. Preserve knowledge. Remember what matters.”
+
+This is an unpublished experimental native Python/GTK Linux application under the MIT License. The selected repository and package name is `shrutadhara`; public publication is pending. Never commit recordings, credentials, user configuration, private logs, venvs or generated build outputs. Development voice fixtures are excluded from source and release artifacts. Commit messages must not contain co-author trailers.
+
+Use Python >=3.11, distribution GTK4/PyGObject, FFmpeg and pactl. Create a venv with system packages visible; install `-e '.[test]'`. Run `python -m pytest -q`, `ruff check .`, `python -m compileall -q shrutadhara`, `uv build`, and `python tools/check_release.py dist`. Test the extracted source archive's documented installation as well as the checkout. Build artifacts must include source install scripts, desktop assets and license notices, and must exclude audio and user data. CI uses mocked/offline operations after installing development dependencies; no AI accounts or real audio devices are used.
+
+Keep changes small and explain the concrete behavior, validation and limitations. Add regression tests for correctness fixes. Tests must isolate SHRUTA_ROOT and XDG directories, use synthetic audio and mocked providers, and never touch live routing, record microphones or upload data. Provider/consent/cache/integrity changes require adversarial regressions. Capture/device/Wayland acceptance is manual and must be clearly distinguished from mocked CI evidence. See VALIDATION.md and ASTRA_REVIEW.md.
+
+Report reproducible issues with redacted diagnostics, versions and synthetic examples. Do not attach real meeting audio or keys. No hosted credentials are required for contributions. Do not edit compositor settings automatically; portal support remains deferred. agy stays the default adapter; another destination requires explicit user consent.

@@ -1,0 +1,11 @@
+The application source is licensed under the MIT License in LICENSE.
+Third-party dependencies are installed separately and retain their own licenses.
+
+Earlier local development used synthetic speech rendered by sam-js 0.3.1.
+Its upstream README does not specify an open-source license. Neither that
+generator nor its generated development fixture is included in release artifacts.
+The local fixture is retained outside the package in an ignored directory.
+AI capability probes require an explicitly provided speech sample that the user
+has permission to process and upload.
+
+Upstream reference: https://github.com/discordier/sam#license

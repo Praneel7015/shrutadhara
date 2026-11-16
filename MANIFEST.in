@@ -1,0 +1,6 @@
+include install.py install.sh README.md VALIDATION.md CONTRIBUTING.md SECURITY.md CHANGELOG.md LICENSE NOTICE
+include npm/LICENSE npm/NOTICE
+recursive-include desktop *
+recursive-include npm *.json *.js *.md
+recursive-include tests *.py
+recursive-include tools *.py
