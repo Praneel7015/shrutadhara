@@ -80,10 +80,12 @@ jobs:
           /usr/bin/python -c 'import gi, jsonschema, shrutadhara; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk'
           pacman -R --noconfirm shrutadhara
           test ! -e /usr/bin/shruta
+      - name: Stage flat Arch release assets
+        run: |
+          mkdir /tmp/release-arch
+          cp /tmp/aur/*.pkg.tar.zst /tmp/assets/shrutadhara-aur.tar.gz /tmp/release-arch/
       - uses: actions/upload-artifact@v4
         with:
           name: arch-assets
-          path: |
-            /tmp/aur/*.pkg.tar.zst
-            /tmp/assets/shrutadhara-aur.tar.gz
+          path: /tmp/release-arch/*
           if-no-files-found: error
