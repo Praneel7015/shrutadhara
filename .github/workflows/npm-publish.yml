@@ -1,0 +1,39 @@
+name: Publish npm experimental package
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing validated GitHub release tag (for example v0.1.0)
+        required: true
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - name: Download exact release package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          gh release download "$RELEASE_TAG" --pattern "shrutadhara-${RELEASE_TAG#v}.tgz" --pattern SHA256SUMS
+          python - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          name = 'shrutadhara-' + os.environ['RELEASE_TAG'][1:] + '.tgz'
+          rows = [row.split() for row in Path('SHA256SUMS').read_text().splitlines()]
+          expected = [digest for digest, filename in rows if filename == name]
+          assert len(expected) == 1
+          assert hashlib.sha256(Path(name).read_bytes()).hexdigest() == expected[0]
+          PY
+      - name: Publish through configured npm trusted publisher
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: npm publish "shrutadhara-${RELEASE_TAG#v}.tgz" --access public --tag experimental --provenance --ignore-scripts

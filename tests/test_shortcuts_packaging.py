@@ -63,7 +63,8 @@ def test_npm_launcher_no_runtime_and_recursion(tmp_path, monkeypatch):
     assert result.returncode == 3
     assert "recursive" in result.stderr
     manifest = json.loads((root / "npm/package.json").read_text())
-    assert manifest["private"] is True
+    assert manifest["private"] is False
+    assert manifest["publishConfig"]["tag"] == "experimental"
     assert "scripts" not in manifest
 
 

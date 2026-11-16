@@ -1,6 +1,8 @@
 """Check built artifacts without installing or executing their application code."""
 
 import argparse
+import hashlib
+import io
 import json
 import tarfile
 import zipfile
@@ -10,12 +12,14 @@ from pathlib import Path
 def check_names(names):
     for name in names:
         path = Path(name)
-        if path.suffix.lower() in {".wav", ".mkv", ".mp3", ".flac", ".m4a", ".opus"}:
+        if path.suffix.lower() in {".wav", ".mkv", ".mp3", ".flac", ".m4a", ".opus", ".ogg", ".webm"}:
             raise ValueError(f"Audio fixture must not be shipped: {name}")
         if (
             ".local-fixtures" in path.parts
             or ".git" in path.parts
-            or path.name == "session.json"
+            or set(path.parts) & {"audio", "transcript", "notes", "questions", "logs", "Meetings"}
+            or path.name in {"session.json", "config.json", "capability.json", ".env"}
+            or path.name.startswith(".env.")
         ):
             raise ValueError(
                 f"Private development/user data must not be shipped: {name}"
@@ -42,6 +46,8 @@ def check(directory):
             ):
                 raise ValueError("Wheel lacks desktop entry")
     for source in sources:
+        if source.name == "shrutadhara-aur.tar.gz":
+            continue
         with tarfile.open(source) as archive:
             names = archive.getnames()
             check_names(names)
@@ -70,6 +76,16 @@ def check(directory):
                 raise ValueError(
                     "npm convenience package must have no install/lifecycle hooks"
                 )
+            wheel_name = f"shrutadhara-{manifest['version']}-py3-none-any.whl"
+            wheel_path = "package/native/" + wheel_name
+            bundled = archive.extractfile(wheel_path).read()
+            checksum = json.load(archive.extractfile("package/native/manifest.json"))
+            if checksum != {"filename": wheel_name, "sha256": hashlib.sha256(bundled).hexdigest()}:
+                raise ValueError("Bundled wheel manifest mismatch")
+            with zipfile.ZipFile(io.BytesIO(bundled)) as nested:
+                check_names(nested.namelist())
+            if manifest.get("private") or manifest.get("publishConfig", {}).get("tag") != "experimental":
+                raise ValueError("npm release must explicitly target the experimental channel")
 
 
 def main():

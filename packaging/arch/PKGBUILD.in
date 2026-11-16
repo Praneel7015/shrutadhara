@@ -1,0 +1,36 @@
+# Generated from the exact release source archive; do not replace checksums with SKIP.
+pkgname=shrutadhara
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Experimental local-first AI meeting assistant with native GTK and PipeWire capture'
+arch=('any')
+url='https://github.com/Praneel7015/shrutadhara'
+license=('MIT')
+depends=('python>=3.11' 'python-jsonschema' 'gtk4>=4.10' 'python-gobject' 'ffmpeg' 'libpulse' 'pipewire-pulse' 'wireplumber')
+makedepends=('python-build' 'python-installer' 'python-setuptools>=77' 'python-wheel')
+checkdepends=('python-pytest')
+optdepends=('libnotify: desktop recording notifications'
+            'xdg-utils: open session folders and artifacts'
+            'systemd: optional user-service capture supervision')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/Praneel7015/shrutadhara/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
+sha256sums=('@SHA256@')
+
+build() {
+    cd "$pkgname-$pkgver"
+    python -m build --wheel --no-isolation
+}
+
+check() {
+    cd "$pkgname-$pkgver"
+    python -m pytest -q
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    python -m installer --destdir="$pkgdir" dist/*.whl
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 NOTICE "$pkgdir/usr/share/licenses/$pkgname/NOTICE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 VALIDATION.md "$pkgdir/usr/share/doc/$pkgname/VALIDATION.md"
+    install -Dm644 desktop/shrutadhara-call-monitor.service "$pkgdir/usr/share/doc/$pkgname/shrutadhara-call-monitor.service"
+}

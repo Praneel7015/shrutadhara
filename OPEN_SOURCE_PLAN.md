@@ -1,3 +1,5 @@
+> Distribution update: implementation and current publication procedure are in docs/DISTRIBUTION.md. Earlier approval/publication gates below describe the historical planning stage.
+
 # Native Linux recorder: product and engineering plan
 
 **Naming decision:** the owner selected **Shrutadhara (श्रुतधर)**, executable **`shruta`**, and repository/Python package **`shrutadhara`**. CLI branding and migration support are implemented. Summary, action, decision and transcript-Q&A commands extend the original roadmap. The philosophy is “Hear everything. Preserve knowledge. Remember what matters.”

@@ -10,7 +10,7 @@ requires-python = ">=3.11"
 classifiers = ["Private :: Do Not Upload"]
 license = "MIT"
 license-files = ["LICENSE", "NOTICE"]
-dependencies = ["jsonschema>=4.20,<5"]
+dependencies = ["jsonschema>=4.10,<5"]
 
 [project.urls]
 Repository = "https://github.com/Praneel7015/shrutadhara"

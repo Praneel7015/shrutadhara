@@ -1,13 +1,25 @@
-# Unpublished npm convenience launcher
+# Shrutadhara npm launcher — experimental
 
-This MIT-licensed private local package starts the same native Python/GTK recorder. It has no Electron/browser runtime, install hooks, automatic downloads, recording or service setup. No registry name or public availability is promised. Choose repository/registry identity before publication.
+This MIT-licensed Linux package starts the native Python/GTK application. It bundles a small version-matched Python wheel, not Electron, an audio fixture or a speech engine. It has no install/lifecycle hooks, automatic application downloads, recording or service setup. Node is required for this convenience wrapper only; prefer native Arch/Debian packages where available.
 
-Build a reviewed wheel at the project root with `uv build`, then use `npm install --global ./npm --ignore-scripts`. Run `shruta setup-native /absolute/path/to/dist/shrutadhara-0.1.0-py3-none-any.whl`. Setup explicitly creates a user-local Python venv with system packages visible and installs the local wheel; pip may download Python dependencies. Install distribution Python venv/pip support, GTK 4/PyGObject, FFmpeg and pactl yourself first. This command never installs system packages or enables services. For an existing native install, set `SHRUTA_NATIVE_EXECUTABLE` to its absolute executable path. Do not point it to this wrapper.
+Until registry publication, install the reviewed release tarball with `npm install --global ./shrutadhara-0.1.0.tgz --ignore-scripts`. After publication use `npm install --global shrutadhara@experimental --ignore-scripts`. Registry availability is not implied by this README.
 
-Run `shruta doctor` and `shruta show`. Desktop integration is separately explicit: `shruta install-desktop`. Use `shruta shortcuts` for manual compositor bindings. Recording and AI upload require their ordinary explicit actions.
+Install Python >=3.11 with venv/pip support, jsonschema, GTK >=4.10/PyGObject, FFmpeg, pactl and a running PipeWire/Pulse compatibility stack first. On Debian13/Ubuntu24.04 or newer these correspond to `python3 python3-venv python3-pip python3-jsonschema python3-gi gir1.2-gtk-4.0 ffmpeg pulseaudio-utils pipewire-pulse wireplumber`; on Arch see the native PKGBUILD dependencies. Review audio-stack package changes yourself.
 
-Setup requires the wheel version matching this launcher. Repeating explicit setup reinstalls that reviewed wheel in the managed runtime, including a locally rebuilt wheel with the same development version. Python dependencies may be downloaded again; the application artifact itself is never fetched automatically.
+Then explicitly run:
 
-Setup uses prebuilt Python dependency wheels and bounded network retries; it does not start a compiler/toolchain build. If a matching dependency wheel is unavailable, use a supported Python/distribution package installation. Each setup subprocess has a three-minute deadline; normal recording/GUI commands do not inherit that deadline.
+```bash
+shruta setup-native
+shruta doctor
+shruta show
+```
 
-`npm uninstall --global shrutadhara` removes the wrapper. After stopping work, remove only the managed runtime at `${XDG_DATA_HOME:-$HOME/.local/share}/shrutadhara/npm-runtime` and any explicitly installed user desktop entry/launcher if desired. Recordings/configuration are separate and must be retained. Never remove a native package manager's installation. Node is required for this wrapper, not for native installations.
+Setup checks the bundled wheel against its packaged SHA256 manifest, creates a private user-local venv with system packages visible for GTK, and installs that wheel. The hash is a consistency check; trust comes from the reviewed npm/GitHub release, not an independent signature. pip may fetch Python dependency wheels. System packages/services remain managed by you. Runtime location: `${XDG_DATA_HOME:-$HOME/.local/share}/shrutadhara/npm-runtime`.
+
+An explicitly reviewed local wheel can instead be supplied: `shruta setup-native /absolute/path/to/shrutadhara-0.1.0-py3-none-any.whl`. This option checks version/name but cannot authenticate arbitrary local bytes; review them first. Source-tree launchers require this explicit path because release staging adds the bundled wheel. Build a release with `tools/prepare_npm.py` before `npm pack` or publishing.
+
+For an existing native installation set `SHRUTA_NATIVE_EXECUTABLE` to its absolute executable path; do not point it at this wrapper. Desktop integration is separately explicit: `shruta install-desktop`. `shruta shortcuts` documents manual compositor bindings. Recording and hosted AI use require their ordinary explicit actions. agy transcription remains unvalidated; installation does not enable it.
+
+Repeated explicit setup reinstalls the same matching wheel. Setup uses prebuilt dependency wheels, bounded network retries and three-minute subprocess deadlines; no compiler build is launched. Normal recording/GUI commands have no setup deadline. Use your distribution package if Python dependency wheels are unavailable.
+
+`npm uninstall --global shrutadhara` removes the wrapper. After stopping recording and processing, remove only its managed npm-runtime directory and any explicitly installed user desktop entry if desired. Recordings/configuration are retained separately. Never remove a native package manager's files.

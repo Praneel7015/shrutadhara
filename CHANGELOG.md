@@ -1,6 +1,11 @@
 # Changelog
 
-## 0.1.0 — experimental, unpublished
+## 0.1.0 — experimental
+
+- Added pinned-source Arch/AUR packaging and native Debian package builds.
+- Added disposable Ubuntu/Arch installation checks and tagged GitHub prereleases.
+- Bundled matching native wheel in npm release with explicit setup and integrity checks.
+- Added manual npm trusted-publishing workflow; no automatic registry or AUR publication.
 
 - Introduce Shrutadhara (श्रुतधर), the `shruta` CLI and native GTK recording controls.
 - Preserve separate microphone/participants audio, segmented originals, recovery metadata and explicit processing gaps.

@@ -6,7 +6,7 @@ if ! command -v uv >/dev/null; then
     exit 3
 fi
 if [[ ! -x "$project_dir/.venv/bin/python" ]]; then
-    uv venv --python /usr/bin/python --system-site-packages "$project_dir/.venv"
+    uv venv --python /usr/bin/python3 --system-site-packages "$project_dir/.venv"
 fi
 uv pip install --python "$project_dir/.venv/bin/python" -e "$project_dir"
 "$project_dir/.venv/bin/python" "$project_dir/install.py" "$@"

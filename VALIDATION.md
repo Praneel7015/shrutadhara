@@ -54,3 +54,9 @@ Before enabling meeting processing, run an explicitly approved representative kn
 - A real two-hour recording/processing soak and sustained GUI resource measurements.
 
 The recording/CLI/GUI implementation is available for manual use and further acceptance testing. Reliable daily AI transcription has **not** been established on the current `agy` path.
+
+## Distribution packaging validation (2026-11-17)
+
+Local suite: 125 passed. Python3.11/jsonschema4.10.3 minimum dependency run: 124 passed, one GTK availability skip. Native Arch build, test execution and extracted CLI smoke succeeded with temporary Python build dependencies and explicit makepkg --nodeps; this is not clean-chroot installation evidence. The distribution workflows perform actual install/import/help/removal on disposable Ubuntu24.04 and Arch runners. npm release bundles a matching SHA256-checked wheel; default setup is explicit. Debian output uses reproducible ar/tar layout, no maintainer scripts, and GTK>=4.10 dependencies. These checks do not validate real meeting recognition, device switching or long recordings.
+
+A packed npm tarball was installed into an isolated temporary HOME/XDG prefix. Default bundled-wheel setup completed successfully and CLI help passed outside the source directory. No recording, hosted AI, system installation or user configuration was used by that smoke test.

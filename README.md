@@ -22,9 +22,9 @@ For a hands-on recording, playback and optional AI validation workflow, see the 
 
 `shruta show` also opens or focuses the window. `shruta start` returns the current active session when already recording, and repeated `shruta stop` is safe. Keep user-facing recording notices enabled.
 
-For an installed Python wheel, `shruta install-desktop` explicitly installs a user launcher and application-menu entry using that installation. The source installer is no longer required after a wheel install. The unpublished npm convenience package and its explicit local-wheel setup are documented in [npm/README.md](npm/README.md). It remains private; no public registry or AUR package is claimed.
+For an installed Python wheel, `shruta install-desktop` explicitly installs a user launcher and application-menu entry using that installation. The source installer is no longer required after a wheel install. Experimental native Arch/Debian artifacts and the npm launcher are described in the [distribution guide](docs/DISTRIBUTION.md) and [npm README](npm/README.md). npm/AUR listings and distribution repository inclusion require separate publication; source availability alone does not provide them.
 
-The installer creates an isolated venv using `/usr/bin/python` with system packages visible for GTK, a `~/.local/bin/shruta` launcher, and an application-menu entry. It does not enable recording, a login service, or hosted processing. Keep this project directory in place; the launcher points into it. Re-run the installer after moving it.
+The installer creates an isolated venv using `/usr/bin/python3` with system packages visible for GTK, a `~/.local/bin/shruta` launcher, and an application-menu entry. It does not enable recording, a login service, or hosted processing. Keep this project directory in place; the launcher points into it. Re-run the installer after moving it.
 
 Required system tools: `ffmpeg`/`ffprobe`, `pactl` (Arch package `libpulse`), running PipeWire/Pulse compatibility and WirePlumber, Python ≥3.11. GUI: `gtk4` and `python-gobject`. Optional: `notify-send` (`libnotify`), `xdg-open` (`xdg-utils`), systemd user services, and `agy`.
 
@@ -33,7 +33,7 @@ If dependencies are missing, review `shruta doctor`; install only those you need
 Manual installation without uv:
 
 ```bash
-/usr/bin/python -m venv --system-site-packages .venv
+/usr/bin/python3 -m venv --system-site-packages .venv
 .venv/bin/python -m pip install -e .
 .venv/bin/python install.py
 ```
@@ -274,4 +274,4 @@ Uninstall launchers with `rm ~/.local/bin/shruta ~/.local/share/applications/io.
 
 ## License
 
-The application source is available under the [MIT License](LICENSE). See [NOTICE](NOTICE) for the excluded development fixture and dependency notes. Python and npm artifacts remain marked unpublished until the public project and registry identities are selected.
+The application source is available under the [MIT License](LICENSE). See [NOTICE](NOTICE) for the excluded development fixture and dependency notes. Experimental GitHub package releases use the public project identity. npm and AUR publication remain separate steps; see the [distribution guide](docs/DISTRIBUTION.md).

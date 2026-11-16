@@ -1,0 +1,89 @@
+name: Distribution packages
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install -e '.[test]' build
+      - run: python -m pytest -q && ruff check .
+      - name: Build release assets
+        run: |
+          export SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)"
+          python -m build
+          python tools/prepare_npm.py dist/*.whl /tmp/shrutadhara-npm
+          npm pack --ignore-scripts --pack-destination dist /tmp/shrutadhara-npm
+          python tools/build_deb.py dist/*.whl
+          python tools/check_release.py dist
+          cd dist
+          sha256sum *.whl *.tar.gz *.tgz *.deb > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: dist/*
+          if-no-files-found: error
+  debian:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: dist
+      - name: Install, verify and remove native package
+        run: |
+          sudo apt-get update
+          dpkg-deb --info dist/*.deb
+          sudo apt-get install -y ./dist/*.deb
+          cd /tmp
+          /usr/bin/shruta --help
+          /usr/bin/python3 -c 'import gi, jsonschema, shrutadhara; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk'
+          test -f /usr/share/applications/io.github.Praneel7015.Shrutadhara.desktop
+          sudo apt-get remove -y shrutadhara
+          test ! -e /usr/bin/shruta
+  arch:
+    needs: build
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    steps:
+      - name: Install build and runtime dependencies in disposable runner
+        run: pacman -Syu --noconfirm python python-build python-installer python-setuptools python-wheel python-pytest python-jsonschema python-gobject gtk4 ffmpeg libpulse pipewire-pulse wireplumber libnotify xdg-utils git
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: /tmp/assets
+      - uses: actions/checkout@v4
+      - name: Build, install and remove native package
+        run: |
+          useradd -m builder
+          mkdir /tmp/aur
+          chown builder:builder /tmp/aur
+          runuser -u builder -- python packaging/arch/prepare.py /tmp/assets/shrutadhara-[0-9]*.tar.gz --output /tmp/aur
+          tar -czf /tmp/assets/shrutadhara-aur.tar.gz -C /tmp/aur PKGBUILD .SRCINFO
+          cd /tmp/aur
+          runuser -u builder -- makepkg --cleanbuild --check --noconfirm
+          pacman -U --noconfirm ./*.pkg.tar.zst
+          cd /tmp
+          /usr/bin/shruta --help
+          /usr/bin/python -c 'import gi, jsonschema, shrutadhara; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk'
+          pacman -R --noconfirm shrutadhara
+          test ! -e /usr/bin/shruta
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-assets
+          path: |
+            /tmp/aur/*.pkg.tar.zst
+            /tmp/assets/shrutadhara-aur.tar.gz
+          if-no-files-found: error
