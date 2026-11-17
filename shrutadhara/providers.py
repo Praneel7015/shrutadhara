@@ -11,6 +11,10 @@ from . import agy
 from .core import MeetingError
 
 
+class CapabilityRefusal(MeetingError):
+    """A session-fatal refusal to process native audio; never submit later chunks."""
+
+
 class Provider(Protocol):
     def identity(self, cfg: dict) -> dict: ...
 

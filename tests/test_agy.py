@@ -167,4 +167,6 @@ def test_timeout_kills_process_group_and_stops_after_three_attempts(
     monkeypatch.setattr(agy.time, "sleep", lambda *_: None)
     with pytest.raises(agy.AIError, match="deadline"):
         agy.invoke("prompt", SCHEMA, tmp_path, {**config(), "hosted_consent": True})
-    assert len(calls) == len(signals) == 3
+    assert len(calls) == 3
+    assert len([s for _, s in signals if s == __import__("signal").SIGTERM]) == 3
+    assert len([s for _, s in signals if s == __import__("signal").SIGKILL]) == 3

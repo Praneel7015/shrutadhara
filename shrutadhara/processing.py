@@ -350,7 +350,9 @@ def validate_transcription(result: dict, chunk: dict) -> None:
     ):
         if agy.is_limit(result["limitation"]):
             raise agy.AIError("Provider audio/context limit", limit=True)
-        raise MeetingError("Chunk was not fully transcribed with native audio", 6)
+        raise providers.CapabilityRefusal(
+            "Provider refused or did not fully process native audio; later submissions stopped", 6
+        )
     last = -1
     duration = chunk["end"] - chunk["start"]
     for seg in result["segments"]:
@@ -795,6 +797,7 @@ def process(
             "Processing started" if not import_path else "Importing transcript chunks"
         )
         accepted, failures = {}, []
+        capability_refusal = None
         try:
             index = 0
             while index < len(manifest["chunks"]):
@@ -866,6 +869,9 @@ def process(
                     failures.append({"chunk_id": chunk["id"], "error": str(exc)})
                     sessions.error(session, "transcription", f"{chunk['id']}: {exc}")
                     # Provider blocks/auth/capability errors should not trigger uploads of every remaining chunk.
+                    if isinstance(exc, providers.CapabilityRefusal):
+                        capability_refusal = exc
+                        break
                     if isinstance(exc, agy.AIError):
                         break
                 index += 1
@@ -888,11 +894,15 @@ def process(
             render_transcript(session, transcript)
             sessions.update(
                 session,
-                transcription="complete"
+                transcription="blocked"
+                if capability_refusal
+                else "complete"
                 if transcript["coverage_complete"]
                 else "partial",
                 coverage_complete=transcript["coverage_complete"],
             )
+            if capability_refusal:
+                raise capability_refusal
             if import_path and not cfg["hosted_consent"]:
                 sessions.update(session, notes="blocked")
                 return {

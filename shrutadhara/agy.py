@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import shutil
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
 
+from .child import guarded_command
 from .core import (
     MeetingError,
     atomic_json,
@@ -170,7 +173,63 @@ def parse_response(raw: str, schema: dict, allow_audio: bool) -> dict:
     return obj
 
 
+@contextlib.contextmanager
+def cancellation():
+    """Translate process termination into cancellation while owning hosted work."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = signal.getsignal(signal.SIGTERM)
+
+    def terminated(_signum, _frame):
+        raise KeyboardInterrupt("Hosted processing cancelled")
+
+    signal.signal(signal.SIGTERM, terminated)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
 def invoke(
+    prompt: str,
+    schema: dict,
+    workspace: Path,
+    cfg: dict,
+    audio_path: Path | None = None,
+    attempts: int = 3,
+) -> dict:
+    with cancellation():
+        return _invoke(prompt, schema, workspace, cfg, audio_path, attempts)
+
+
+def _stop_group(proc):
+    """Terminate the owned group before reaping its leader and freeing its PID."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    deadline = time.monotonic() + 5
+    # WNOWAIT observes exit without reaping: the leader PID remains reserved
+    # until group escalation, so its PGID cannot be recycled between signals.
+    while True:
+        try:
+            exited = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        except ChildProcessError:
+            break  # Already reaped or a mocked process object.
+        if exited is not None or time.monotonic() >= deadline:
+            break
+        time.sleep(0.02)
+    # A leader may exit on TERM while descendants ignore it. Always escalate
+    # the still-owned group before wait(), rather than trusting leader exit.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    proc.wait()
+
+
+def _invoke(
     prompt: str,
     schema: dict,
     workspace: Path,
@@ -242,7 +301,7 @@ def invoke(
                 (run_dir / "stderr.log").open("w+") as err,
             ):
                 proc = subprocess.Popen(
-                    command,
+                    guarded_command(command),
                     cwd=workspace,
                     env=env,
                     stdin=subprocess.PIPE,
@@ -254,12 +313,7 @@ def invoke(
                 try:
                     proc.communicate(payload, timeout=cfg.get("ai_timeout", 600))
                 except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
-                    os.killpg(proc.pid, signal.SIGTERM)
-                    try:
-                        proc.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        os.killpg(proc.pid, signal.SIGKILL)
-                        proc.wait()
+                    _stop_group(proc)
                     if isinstance(exc, KeyboardInterrupt):
                         raise
                     raise AIError(
@@ -298,6 +352,10 @@ def invoke(
                 {"at": now(), "attempt": attempt + 1, "state": "accepted"},
             )
             return value
+        except KeyboardInterrupt:
+            with contextlib.suppress(OSError, MeetingError):
+                atomic_json(run_dir / "attempt.json", {"at": now(), "attempt": attempt + 1, "state": "cancelled"})
+            raise
         except (AIError, OSError) as exc:
             atomic_json(
                 run_dir / "attempt.json",

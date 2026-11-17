@@ -407,3 +407,33 @@ def test_explicit_correction_does_not_read_corrupt_obsolete_cache(
     )
     assert p.process(recorded, import_path=imported)["coverage_complete"]
     assert "Corrected text" in (recorded / "transcript/full-transcript.md").read_text()
+
+
+def test_native_audio_refusal_stops_later_submissions(recorded, monkeypatch):
+    from unittest.mock import Mock
+
+    from shrutadhara import providers
+
+    chunks = []
+    for i in range(3):
+        item = chunk(f'microphone-{i:05d}', i * 10, (i + 1) * 10, i * 10, (i + 1) * 10)
+        item['path'] = f'transcript/chunks/{item["id"]}/audio.wav'
+        folder = (recorded / item['path']).parent
+        folder.mkdir(parents=True, exist_ok=True)
+        chunks.append(item)
+    manifest = {'chunks': chunks, 'source_fingerprint': 'synthetic', 'archive_errors': []}
+    adapter = Mock()
+    adapter.capable.return_value = True
+    adapter.identity.return_value = {'model': 'fake'}
+    adapter.transcribe.return_value = {'audio_received': False, 'fully_processed': False, 'limitation': 'Native audio is unsupported', 'segments': []}
+    monkeypatch.setattr(p, 'prepare', lambda *_: manifest)
+    monkeypatch.setattr(p, 'config', lambda: {**config(), 'hosted_consent': True})
+    monkeypatch.setattr(p.providers, 'get_provider', lambda _: adapter)
+    with pytest.raises(providers.CapabilityRefusal, match='later submissions stopped'):
+        p.process(recorded)
+    assert adapter.transcribe.call_count == 1
+    metadata = read_json(recorded / 'session.json')
+    assert metadata['transcription'] == 'blocked'
+    assert not metadata['coverage_complete']
+    transcript = read_json(recorded / 'transcript/transcript.json')
+    assert not transcript['coverage_complete'] and transcript['unprocessed']
