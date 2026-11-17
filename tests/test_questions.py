@@ -2,7 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from shrutadhara import cli, questions
+from shrutadhara import cli, output_cache, questions
 from shrutadhara.core import MeetingError, atomic_json
 
 
@@ -12,7 +12,8 @@ def accepted(tmp_path, monkeypatch):
     atomic_json(
         session / "session.json", {"transcription": "complete", "notes": "complete"}
     )
-    atomic_json(
+    output_cache.write(
+        session,
         session / "transcript/transcript.json",
         {
             "source_fingerprint": "source",
@@ -147,3 +148,25 @@ def test_historical_answer_links_to_its_original_evidence_after_correction(accep
     assert evidence.read_bytes() == original
     assert "Do not ship" not in evidence.read_text()
     assert read_json(workspace / "request.json")["evidence_sha256"]
+
+
+def test_valid_transcript_edit_is_rejected_before_question_submission(accepted):
+    from shrutadhara.core import read_json
+
+    session, provider = accepted
+    path = session / "transcript/transcript.json"
+    value = read_json(path)
+    value["segments"][0]["text"] = "Changed without an explicit import."
+    atomic_json(path, value)
+    with pytest.raises(output_cache.OutputIntegrityError, match="changed"):
+        questions.ask(session, "When?")
+    provider.structured.assert_not_called()
+
+
+def test_legacy_unbaselined_transcript_requires_explicit_reprocess(accepted):
+    session, provider = accepted
+    (session / "transcript/accepted-outputs.json").unlink()
+    with pytest.raises(MeetingError, match="reprocess or explicitly import"):
+        questions.ask(session, "When?")
+    provider.structured.assert_not_called()
+    assert not (session / "questions").exists()

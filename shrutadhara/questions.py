@@ -7,6 +7,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator, ValidationError
 
+from . import output_cache
 from .core import (
     MeetingError,
     atomic_json,
@@ -69,7 +70,12 @@ def ask(session: Path, question: str, allow_partial: bool = False) -> str:
             raise MeetingError(
                 "An accepted transcript is required; finish transcription first", 6
             )
-        transcript = read_json(path)
+        transcript = output_cache.read(session, path)
+        if transcript is None:
+            raise MeetingError(
+                "Accepted transcript has no output-integrity baseline; reprocess or explicitly import reviewed results before asking",
+                6,
+            )
         partial = (
             meta.get("transcription") != "complete"
             or transcript.get("coverage_complete") is not True

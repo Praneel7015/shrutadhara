@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import wave
@@ -533,7 +534,9 @@ def merge(
     }
 
 
-def render_transcript(session: Path, transcript: dict):
+def render_transcript(
+    session: Path, transcript: dict, *, explicit_import: bool = False
+):
     lines = [
         "# Meeting transcript",
         "",
@@ -565,8 +568,16 @@ def render_transcript(session: Path, transcript: dict):
                 "",
             ]
         )
+    output_cache.write(
+        session,
+        session / "transcript/transcript.json",
+        transcript,
+        explicit_import=explicit_import,
+    )
+    # The Markdown is a projection: do not replace it until JSON acceptance and
+    # its integrity ledger commit succeed. A later projection write failure is
+    # reported; the accepted JSON remains authoritative for retry.
     atomic_text(session / "transcript/full-transcript.md", "\n".join(lines))
-    atomic_json(session / "transcript/transcript.json", transcript)
 
 
 def evidence_links(ids: list[str], by_id: dict) -> str:
@@ -933,7 +944,7 @@ def process(
                 )
             transcript["source_fingerprint"] = manifest["source_fingerprint"]
             transcript["failures"] = failures
-            render_transcript(session, transcript)
+            render_transcript(session, transcript, explicit_import=bool(import_path))
             sessions.update(
                 session,
                 transcription="blocked"
@@ -980,7 +991,11 @@ def process(
                         "reason": "Processing interrupted; rerun to finish validation",
                     }
                 )
-                render_transcript(session, interrupted)
+                # An integrity failure must never replace the previously accepted
+                # transcript or hide its original exception during error rendering.
+                if not isinstance(exc, output_cache.OutputIntegrityError):
+                    with contextlib.suppress(output_cache.OutputIntegrityError):
+                        render_transcript(session, interrupted)
                 sessions.update(
                     session, transcription="partial", coverage_complete=False
                 )

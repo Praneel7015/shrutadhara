@@ -6,6 +6,8 @@ output has an immutable byte snapshot, and corrections append revision metadata.
 This detects accidental/local edits, not an actor who controls every baseline.
 """
 
+import hashlib
+import json
 from pathlib import Path
 
 from .core import (
@@ -78,8 +80,8 @@ def write(
         # Re-check after a potentially long model request before replacing bytes.
         read(session, path)
     replaced_hash = digest(path) if path.exists() else None
-    atomic_json(path, value)
-    accepted_hash = digest(path)
+    serialized = json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False) + "\n"
+    accepted_hash = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
     snapshots = private_dir(session / "transcript/accepted-output-revisions")
     snapshot = snapshots / (accepted_hash + ".json")
     _relative(session, snapshot)
@@ -87,8 +89,15 @@ def write(
         if digest(snapshot) != accepted_hash:
             raise OutputIntegrityError("Accepted AI output revision changed", 6)
     else:
-        atomic_text(snapshot, path.read_text())
-    record = {"sha256": accepted_hash, "fingerprint": value.get("fingerprint")}
+        atomic_text(snapshot, serialized)
+    # Preserve an existing accepted cache if snapshot creation fails. A crash
+    # after replacement but before ledger commit remains fail-closed; its old
+    # accepted snapshot is available for explicit restoration.
+    atomic_json(path, value)
+    record = {
+        "sha256": accepted_hash,
+        "fingerprint": value.get("fingerprint", value.get("source_fingerprint")),
+    }
     if previous != record:
         ledger["revisions"].append(
             {

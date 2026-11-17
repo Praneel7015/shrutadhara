@@ -199,10 +199,91 @@ def test_processing_rejects_tampered_accepted_output_before_any_new_call(
     monkeypatch.setattr(p, "generate_notes", lambda *a: None)
     p.process(recorded)
     cache = recorded / "transcript/chunks/a/result.json"
+    transcript_before = (recorded / "transcript/transcript.json").read_bytes()
     record = read_json(cache)
     record["result"]["segments"][0]["text"] = "Unapproved change."
     atomic_json(cache, record)
     with pytest.raises(output_cache.OutputIntegrityError, match="changed"):
         p.process(recorded)
     assert provider.transcribe.call_count == 1
+    assert (recorded / "transcript/transcript.json").read_bytes() == transcript_before
     assert not read_json(recorded / "session.json")["coverage_complete"]
+
+
+def test_snapshot_creation_failure_preserves_prior_cache(recorded, monkeypatch):
+    target = recorded / "notes/notes.json"
+    value = {"fingerprint": "old", "notes": {"text": "accepted"}}
+    output_cache.write(recorded, target, value)
+    original = target.read_bytes()
+    monkeypatch.setattr(
+        output_cache,
+        "atomic_text",
+        lambda *_: (_ for _ in ()).throw(OSError("synthetic snapshot write failure")),
+    )
+    with pytest.raises(OSError, match="snapshot write"):
+        output_cache.write(
+            recorded, target, {"fingerprint": "new", "notes": {"text": "replacement"}}
+        )
+    assert target.read_bytes() == original
+    assert output_cache.read(recorded, target) == value
+
+
+def test_ledger_commit_failure_is_fail_closed_with_old_revision_retained(
+    recorded, monkeypatch
+):
+    target = recorded / "notes/notes.json"
+    output_cache.write(recorded, target, {"fingerprint": "old", "notes": "accepted"})
+    ledger_path = recorded / "transcript/accepted-outputs.json"
+    old_ledger = ledger_path.read_bytes()
+    old_hash = read_json(ledger_path)["files"]["notes/notes.json"]["sha256"]
+    original_atomic = output_cache.atomic_json
+
+    def fail_ledger(path, value):
+        if path == ledger_path:
+            raise OSError("synthetic ledger commit failure")
+        return original_atomic(path, value)
+
+    monkeypatch.setattr(output_cache, "atomic_json", fail_ledger)
+    with pytest.raises(OSError, match="ledger commit"):
+        output_cache.write(
+            recorded, target, {"fingerprint": "new", "notes": "replacement"}
+        )
+    assert ledger_path.read_bytes() == old_ledger
+    with pytest.raises(output_cache.OutputIntegrityError, match="changed"):
+        output_cache.read(recorded, target)
+    old_snapshot = (
+        recorded / "transcript/accepted-output-revisions" / (old_hash + ".json")
+    )
+    assert read_json(old_snapshot)["notes"] == "accepted"
+
+
+def test_rejected_transcript_does_not_replace_previously_accepted_markdown(recorded):
+    original = transcript("Previously accepted dialogue.")
+    p.render_transcript(recorded, original)
+    markdown = recorded / "transcript/full-transcript.md"
+    previous = markdown.read_bytes()
+    atomic_json(
+        recorded / "transcript/transcript.json", transcript("Unapproved JSON edit.")
+    )
+    with pytest.raises(output_cache.OutputIntegrityError, match="changed"):
+        p.render_transcript(recorded, transcript("Replacement must not appear."))
+    assert markdown.read_bytes() == previous
+
+
+def test_ledger_failure_does_not_publish_new_markdown(recorded, monkeypatch):
+    p.render_transcript(recorded, transcript("Previously accepted dialogue."))
+    markdown = recorded / "transcript/full-transcript.md"
+    previous = markdown.read_bytes()
+    original_atomic = output_cache.atomic_json
+
+    def fail_ledger(path, value):
+        if path.name == "accepted-outputs.json":
+            raise OSError("synthetic ledger failure")
+        return original_atomic(path, value)
+
+    monkeypatch.setattr(output_cache, "atomic_json", fail_ledger)
+    with pytest.raises(OSError, match="ledger failure"):
+        p.render_transcript(recorded, transcript("Replacement must not appear."))
+    assert markdown.read_bytes() == previous
+    with pytest.raises(output_cache.OutputIntegrityError, match="changed"):
+        output_cache.read(recorded, recorded / "transcript/transcript.json")
