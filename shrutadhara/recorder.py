@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import audio, sessions
 from .child import guarded_command, process_identity
+from .clock import boot_identity, elapsed_time
 from .core import (
     MeetingError,
     atomic_json,
@@ -47,8 +48,20 @@ def status() -> dict:
     extra = read_json(snapshot) if snapshot.exists() else {}
     if extra.get("session_id") != data["id"]:
         extra = {}
+    age = None
+    if extra.get("boot_id") == boot_identity() and isinstance(extra.get("updated_elapsed"), (int, float)):
+        age = max(0, elapsed_time() - extra["updated_elapsed"])
+    elif extra.get("updated_at"):
+        from datetime import datetime, timezone
+        try:
+            age = max(0, (datetime.now(timezone.utc) - datetime.fromisoformat(extra["updated_at"])).total_seconds())
+        except (TypeError, ValueError):
+            pass
     return {
         **extra,
+        "snapshot_age_seconds": age,
+        "health_stale": age is None or age > 8,
+        "progress_age_seconds": (extra.get("progress_age_seconds", 0) + age) if age is not None else None,
         "active": True,
         "session": d["session"],
         "id": data["id"],
@@ -261,12 +274,13 @@ class Supervisor:
     def __init__(self, path: Path):
         self.path = path
         self.data = read_json(path / "session.json")
+        self.persisted_devices = json.loads(json.dumps(self.data["devices"]))
         self.cfg = config()
         self.running = True
         self.proc: subprocess.Popen | None = None
         self.routing: audio.Routing | None = None
         self.selector = selectors.DefaultSelector()
-        self.progress_at = time.monotonic()
+        self.progress_at = elapsed_time()
         self.progress_buffer = b""
         self.started = 0.0
         self.epochs = self.data.get("epochs", [])
@@ -277,8 +291,16 @@ class Supervisor:
         self.fatal = False
         self.restart_attempts = 0
         self.missing_since: dict[str, float] = {}
-        self.last_poll = time.monotonic()
+        self.last_poll = elapsed_time()
+        self.last_monotonic = time.monotonic()
         self.observed_teams = False
+
+    def persist_devices(self):
+        """Commit newly selected policy before routing its first playback stream."""
+        if self.data["devices"] != self.persisted_devices:
+            devices = json.loads(json.dumps(self.data["devices"]))
+            sessions.update(self.path, devices=devices)
+            self.persisted_devices = devices
 
     def snapshot(self):
         atomic_json(
@@ -286,8 +308,10 @@ class Supervisor:
             {
                 "session_id": self.data["id"],
                 "updated_at": now(),
+                "updated_elapsed": elapsed_time(),
+                "boot_id": boot_identity(),
                 "health": self.health,
-                "progress_age_seconds": round(time.monotonic() - self.progress_at, 1),
+                "progress_age_seconds": round(elapsed_time() - self.progress_at, 1),
                 "gaps": len(self.gaps),
                 "microphone_notice": "Local microphone is captured even while muted in Teams",
             },
@@ -297,7 +321,7 @@ class Supervisor:
         directory = private_dir(
             self.path / f"audio/originals/epoch-{len(self.epochs):03d}"
         )
-        offset = time.monotonic() - self.started
+        offset = elapsed_time() - self.started
         self.epochs.append(
             {
                 "id": len(self.epochs),
@@ -319,7 +343,7 @@ class Supervisor:
         )
         os.set_blocking(self.proc.stdout.fileno(), False)
         self.selector.register(self.proc.stdout, selectors.EVENT_READ, "progress")
-        self.progress_at = time.monotonic()
+        self.progress_at = elapsed_time()
 
     def report_error(self, category: str, message: str):
         """Diagnostics must never prevent owned-process or routing teardown."""
@@ -358,7 +382,7 @@ class Supervisor:
 
     def finalize(self, sockpath: Path):
         """Release capture resources independently of metadata/storage health."""
-        duration = time.monotonic() - self.started
+        duration = elapsed_time() - self.started
         metadata_ok = True
         for track, begin in self.missing_since.items():
             self.gaps.append({"start": begin, "end": duration, "track": track,
@@ -454,17 +478,22 @@ class Supervisor:
                 return
 
     def reconcile(self):
-        t = time.monotonic()
-        if t - self.last_poll > 8:
+        previous_poll = self.last_poll
+        t = elapsed_time()
+        monotonic = time.monotonic()
+        suspended = (t - self.last_poll) - (monotonic - self.last_monotonic)
+        if suspended > 1 or t - self.last_poll > 8:
             self.gaps.append(
                 {
                     "start": self.last_poll - self.started,
                     "end": t - self.started,
                     "track": "both",
-                    "reason": "Scheduling interruption or suspend; inspect audio",
+                    "reason": ("System suspend; inspect audio" if suspended > 1 else
+                               "Scheduling interruption; inspect audio"),
                 }
             )
         self.last_poll = t
+        self.last_monotonic = monotonic
         audio.disk_check(self.path, self.cfg["reserve_bytes"])
         inv = audio.inventory()
         names = {s["name"] for s in inv["sinks"]}
@@ -472,6 +501,8 @@ class Supervisor:
             raise MeetingError(
                 "Audio server restarted or recording buses disappeared", 5
             )
+        self.routing.bind_teams(inv)
+        self.persist_devices()
         opts = self.data["options"]
         physical = {
             s["name"]: s for s in inv["sources"] if not s["name"].endswith(".monitor")
@@ -498,6 +529,7 @@ class Supervisor:
             ),
             "microphone": mic,
             "output": output,
+            "teams_ambiguous": bool(self.data["devices"].get("teams_ambiguous")),
         }
         for track, available in [
             ("microphone", mic in physical),
@@ -514,39 +546,51 @@ class Supervisor:
                         "reason": "Audio device unavailable",
                     }
                 )
-                if track == "microphone":
-                    self.routing.connect_mic(mic)
-                else:
-                    self.routing.connect_output(output)
-        if mic in physical and mic != self.routing.last_mic:
+        modules = audio.module_inventory()
+        mic_state = physical.get(mic)
+        output_state = next((s for s in inv["sinks"] if s["name"] == output), None)
+        mic_connected = self.routing.connected("mic_loop", mic, self.routing.local, modules)
+        output_connected = self.routing.connected("output_loop", self.routing.remote + ".monitor", output, modules)
+        if mic in physical and (mic != self.routing.last_mic or not mic_connected or
+                                audio.device_identity(mic_state) != self.routing.mic_incarnation):
             self.routing.connect_mic(mic)
-        if (
-            output in names
-            and not output.startswith("shruta_")
-            and output != self.routing.last_output
-        ):
+            self.routing.mic_incarnation = audio.device_identity(mic_state)
+            mic_connected = True
+            self.gaps.append({"start": max(0, previous_poll - self.started),
+                              "end": max(0, t - self.started), "track": "microphone",
+                              "reason": "Microphone route reconnected; inspect interval"})
+        if (output in names and not output.startswith("shruta_") and
+            (output != self.routing.last_output or not output_connected or
+             audio.device_identity(output_state) != self.routing.output_incarnation)):
             self.routing.connect_output(output)
+            self.routing.output_incarnation = audio.device_identity(output_state)
+            output_connected = True
+        self.health["mic_route_connected"] = mic in physical and mic_connected
+        self.health["output_route_connected"] = output in names and output_connected
+        # Route acknowledgement precedes closing any missing-participant interval.
+        self.routing.route_teams(inv)
+        if self.health["teams_ambiguous"]:
+            self.missing_since.setdefault("participants", t - self.started)
         if self.health["teams_streams"]:
             self.observed_teams = True
         if self.observed_teams and not self.health["teams_streams"]:
             self.missing_since.setdefault("participants", t - self.started)
-        elif "participants" in self.missing_since:
+        elif not self.health["teams_ambiguous"] and "participants" in self.missing_since:
             self.gaps.append(
                 {
                     "start": self.missing_since.pop("participants"),
                     "end": t - self.started,
                     "track": "participants",
-                    "reason": "Teams playback stream disappeared",
+                    "reason": "Teams playback unavailable or selection ambiguous",
                 }
             )
-        self.routing.route_teams(inv)
         sessions.update(self.path, gaps=self.gaps)
         self.snapshot()
 
     def execute(self):
         os.umask(0o077)
         with locked(runtime_dir() / "recording.lock"):
-            self.started = time.monotonic()
+            self.started = elapsed_time()
             for sig in (signal.SIGTERM, signal.SIGINT):
                 signal.signal(sig, lambda *_: setattr(self, "running", False))
             self.log = (self.path / "logs/recording.log").open("a")
@@ -572,9 +616,13 @@ class Supervisor:
                     self.path / "audio/routing.json",
                 )
                 self.routing.setup(audio.inventory())
-                self.started = time.monotonic()
+                self.persist_devices()
+                self.started = elapsed_time()
                 self.last_poll = self.started
-                sessions.update(self.path, started_at=now())
+                self.last_monotonic = time.monotonic()
+                sessions.update(self.path, started_at=now(), timeline={
+                    "clock": "boottime", "boot_id": boot_identity(), "start": self.started,
+                })
                 self.spawn()
                 ready = False
                 next_check = 0
@@ -587,7 +635,7 @@ class Supervisor:
                             if block:
                                 self.progress_buffer += block
                                 if b"progress=" in self.progress_buffer:
-                                    self.progress_at = time.monotonic()
+                                    self.progress_at = elapsed_time()
                                     self.progress_buffer = b""
                                     if not ready:
                                         sessions.update(
@@ -601,7 +649,7 @@ class Supervisor:
                                         )
                     if (
                         self.proc.poll() is not None
-                        or time.monotonic() - self.progress_at > 15
+                        or elapsed_time() - self.progress_at > 15
                     ):
                         if self.restart_attempts >= 3:
                             raise MeetingError(
@@ -615,12 +663,12 @@ class Supervisor:
                         self.gaps.append(
                             {
                                 "start": max(0, begin),
-                                "end": time.monotonic() - self.started,
+                                "end": elapsed_time() - self.started,
                                 "track": "both",
                                 "reason": "Capture process stopped or stalled",
                             }
                         )
-                    if time.monotonic() >= next_check:
+                    if elapsed_time() >= next_check:
                         try:
                             self.reconcile()
                         except MeetingError:
@@ -628,7 +676,7 @@ class Supervisor:
                             if self.restart_attempts >= 3:
                                 raise
                             self.restart_attempts += 1
-                            begin = time.monotonic() - self.started
+                            begin = elapsed_time() - self.started
                             self.halt_capture()
                             self.routing.cleanup()
                             time.sleep(1)
@@ -638,16 +686,17 @@ class Supervisor:
                                 self.path / "audio/routing.json",
                             )
                             self.routing.setup(audio.inventory())
+                            self.persist_devices()
                             self.spawn()
                             self.gaps.append(
                                 {
                                     "start": begin,
-                                    "end": time.monotonic() - self.started,
+                                    "end": elapsed_time() - self.started,
                                     "track": "both",
                                     "reason": "Capture routing restarted",
                                 }
                             )
-                        next_check = time.monotonic() + 2
+                        next_check = elapsed_time() + 2
             except BaseException as exc:
                 self.fatal = True
                 self.report_error(

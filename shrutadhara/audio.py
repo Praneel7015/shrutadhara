@@ -5,6 +5,7 @@ import json
 import os
 import re
 import selectors
+import shlex
 import shutil
 import subprocess
 import time
@@ -98,6 +99,8 @@ class Routing:
         self.moved: dict[str, dict] = {}
         self.last_mic = devices["microphone"]
         self.last_output = devices["output"]
+        self.mic_incarnation = None
+        self.output_incarnation = None
 
     def save(self):
         atomic_json(
@@ -139,6 +142,7 @@ class Routing:
             self.connect_mic(self.last_mic)
             self.connect_output(self.last_output)
             self.route_teams(inv)
+            self.observe_devices(inv)
         except BaseException:
             self.cleanup()
             raise
@@ -146,10 +150,42 @@ class Routing:
     def unload(self, label: str):
         index = self.modules.get(label)
         if index:
-            # A failure must preserve ownership and prevent a duplicate replacement.
-            pulse("unload-module", index)
+            module = next((m for m in module_inventory() if str(m["index"]) == str(index)), None)
+            args = module_arguments(module) if module else {}
+            owned = any(args.get(key) in {self.remote, self.local} for key in ("source", "sink", "sink_name"))
+            # Verified absence/reuse is safe to forget; failed inspection or
+            # failed unload is not, and must prevent duplicate replacement.
+            if owned:
+                pulse("unload-module", index)
             self.modules.pop(label, None)
         self.save()
+
+    def observe_devices(self, inv: dict):
+        self.mic_incarnation = device_identity(next((s for s in inv["sources"] if s["name"] == self.last_mic), None))
+        self.output_incarnation = device_identity(next((s for s in inv["sinks"] if s["name"] == self.last_output), None))
+
+    def connected(self, label: str, source: str, sink: str, modules: list[dict]) -> bool:
+        module = next((m for m in modules if str(m["index"]) == str(self.modules.get(label))), None)
+        if not module or module.get("name") != "module-loopback":
+            return False
+        args = module_arguments(module)
+        return args.get("source") == source and args.get("sink") == sink
+
+    def bind_teams(self, inv: dict) -> bool:
+        if not self.devices.get("teams_pid"):
+            playback = teams_streams(inv["sink-inputs"])
+            identifiers = [item.get("properties", {}).get("application.process.id") for item in playback]
+            if any(not str(pid).isdecimal() or int(str(pid)) <= 0 for pid in identifiers):
+                self.devices["teams_ambiguous"] = True
+                return False
+            candidates = {str(pid) for pid in identifiers}
+            if len(candidates) > 1:
+                self.devices["teams_ambiguous"] = True
+                return False
+            if candidates:
+                self.devices["teams_pid"] = next(iter(candidates))
+        self.devices["teams_ambiguous"] = False
+        return True
 
     def connect_mic(self, source: str):
         self.unload("mic_loop")
@@ -178,6 +214,8 @@ class Routing:
         self.last_output = sink
 
     def route_teams(self, inv: dict):
+        if not self.bind_teams(inv):
+            return
         remote = next(
             (s["index"] for s in inv["sinks"] if s["name"] == self.remote), None
         )
@@ -236,26 +274,44 @@ def restore_routes(journal: Path, inv: dict | None = None, ownership: dict | Non
     # Check module identity before unloading: Pulse IDs can be reused after a server restart.
     # pactl's JSON module listing on this PipeWire version omits module IDs.
     # The documented short listing includes IDs and is stable across versions.
-    modules = []
-    for line in pulse("list", "short", "modules").stdout.splitlines():
-        fields = line.split("\t")
-        if len(fields) >= 3 and fields[0].isdigit():
-            modules.append(
-                {"index": fields[0], "name": fields[1], "argument": fields[2]}
-            )
+    modules = module_inventory()
     remaining = {}
     for label, module_id in reversed(list(data.get("modules", {}).items())):
         module = next((m for m in modules if str(m["index"]) == str(module_id)), None)
-        arguments = str(module.get("argument", "")) if module else ""
+        arguments = module_arguments(module) if module else {}
         if module and any(
-            name and name in arguments
-            for name in [data.get("remote"), data.get("local")]
+            arguments.get(key) in {data.get("remote"), data.get("local")}
+            for key in ("source", "sink", "sink_name")
+            if arguments.get(key) is not None
         ):
             try:
                 pulse("unload-module", str(module_id))
             except MeetingError:
                 remaining[label] = module_id
     atomic_json(journal, {**data, "modules": remaining, "moved": {}})
+
+
+def module_inventory() -> list[dict]:
+    """Short module listing supplies IDs omitted by some PipeWire JSON builds."""
+    modules = []
+    for line in pulse("list", "short", "modules").stdout.splitlines():
+        fields = line.split("\t")
+        if len(fields) >= 3 and fields[0].isdigit():
+            modules.append({"index": fields[0], "name": fields[1], "argument": fields[2]})
+    return modules
+
+
+def module_arguments(module: dict) -> dict:
+    try:
+        return dict(token.split("=", 1) for token in shlex.split(str(module.get("argument", ""))) if "=" in token)
+    except ValueError:
+        return {}
+
+
+def device_identity(item: dict | None):
+    if item is None:
+        return None
+    return (item.get("index"), item.get("properties", {}).get("object.serial"))
 
 
 def recording_command(remote: str, local: str, epoch: Path) -> list[str]:

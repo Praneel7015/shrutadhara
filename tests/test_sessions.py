@@ -60,3 +60,24 @@ def test_reject_symlink_directory(tmp_path):
     link.symlink_to(target)
     with pytest.raises(MeetingError):
         private_dir(link)
+
+
+def test_elapsed_uses_boot_timeline_including_suspend(monkeypatch):
+    monkeypatch.setattr(sessions, "boot_identity", lambda: "same-boot")
+    monkeypatch.setattr(sessions, "elapsed_time", lambda: 175.0)
+    data = {"started_at": "2000-01-01T00:00:00+00:00", "recording": "recording",
+            "timeline": {"clock": "boottime", "boot_id": "same-boot", "start": 100}}
+    assert sessions.elapsed(data) == 75
+    data["recording"] = "recorded"
+    data["duration_seconds"] = 74
+    assert sessions.elapsed(data) == 74
+
+
+def test_elapsed_does_not_reinterpret_previous_boot_anchor(monkeypatch):
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(sessions, "boot_identity", lambda: "new-boot")
+    monkeypatch.setattr(sessions, "elapsed_time", lambda: pytest.fail("wrong boot"))
+    data = {"started_at": datetime.now(timezone.utc).isoformat(), "recording": "recording",
+            "timeline": {"clock": "boottime", "boot_id": "old-boot", "start": 100}}
+    assert 0 <= sessions.elapsed(data) < 2

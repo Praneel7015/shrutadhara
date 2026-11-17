@@ -151,3 +151,59 @@ def test_archive_order_uses_offsets(tmp_path, monkeypatch):
     )
     assert not errors
     assert [(s["start"], s["end"]) for s in result] == [(2.5, 62.5), (62.5, 82.5)]
+
+
+def test_late_teams_ambiguity_never_routes_all_instances(inv, tmp_path, monkeypatch):
+    inv["sink-inputs"] = []
+    route = audio.Routing("late-selection", audio.select_devices(inv, {}), tmp_path / "routing.json")
+    inv["sink-inputs"] = [
+        {"index": 9, "sink": 1, "properties": {"application.process.binary": "teams-for-linux", "application.process.id": "111"}},
+        {"index": 10, "sink": 1, "properties": {"application.process.binary": "teams-for-linux", "application.process.id": "222"}},
+    ]
+    calls = []
+    monkeypatch.setattr(audio, "pulse", lambda *args: calls.append(args))
+    route.route_teams(inv)
+    assert route.devices["teams_ambiguous"]
+    assert not calls and not route.devices["teams_pid"]
+    inv["sink-inputs"] = inv["sink-inputs"][:1]
+    route.route_teams(inv)
+    assert route.devices["teams_pid"] == "111"
+    assert calls == [("move-sink-input", "9", route.remote)]
+    # Once selected, another instance never silently replaces the binding.
+    calls.clear()
+    inv["sink-inputs"] = [{"index": 10, "sink": 1, "properties": {"application.process.binary": "teams-for-linux", "application.process.id": "222"}}]
+    route.route_teams(inv)
+    assert calls == [] and route.devices["teams_pid"] == "111"
+
+
+def test_unload_does_not_touch_a_reused_module_id(inv, tmp_path, monkeypatch):
+    route = audio.Routing("reuse", audio.select_devices(inv, {}), tmp_path / "routing.json")
+    route.modules["mic_loop"] = "123"
+    monkeypatch.setattr(audio, "module_inventory", lambda: [{"index": "123", "name": "module-loopback", "argument": "source=unrelated sink=other"}])
+    monkeypatch.setattr(audio, "pulse", lambda *_: pytest.fail("ID now belongs to someone else"))
+    route.unload("mic_loop")
+    assert route.modules == {}
+
+
+def test_missing_module_is_verified_absent_before_reconnect(inv, tmp_path, monkeypatch):
+    route = audio.Routing("absent", audio.select_devices(inv, {}), tmp_path / "routing.json")
+    route.modules["mic_loop"] = "123"
+    monkeypatch.setattr(audio, "module_inventory", lambda: [])
+    calls = []
+    monkeypatch.setattr(audio, "pulse", lambda *args: calls.append(args) or SimpleNamespace(stdout="456"))
+    route.connect_mic("mic")
+    assert route.modules["mic_loop"] == "456"
+    assert not any(args[0] == "unload-module" for args in calls)
+
+
+@pytest.mark.parametrize("identifiers", [[None], ["111", None], [""], ["0"]])
+def test_unidentified_late_teams_streams_fail_closed(inv, tmp_path, monkeypatch, identifiers):
+    inv["sink-inputs"] = []
+    route = audio.Routing("unknown-selection", audio.select_devices(inv, {}), tmp_path / "routing.json")
+    inv["sink-inputs"] = [
+        {"index": index + 10, "sink": 1, "properties": {"application.process.binary": "teams-for-linux", "application.process.id": pid}}
+        for index, pid in enumerate(identifiers)
+    ]
+    monkeypatch.setattr(audio, "pulse", lambda *_: pytest.fail("unidentified stream must never be moved"))
+    route.route_teams(inv)
+    assert route.devices["teams_ambiguous"] and not route.devices["teams_pid"]

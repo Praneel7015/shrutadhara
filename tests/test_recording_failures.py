@@ -181,3 +181,122 @@ def test_control_stop_checks_expected_session_at_dispatch(tmp_path):
     finally:
         server.close()
         supervisor.selector.close()
+
+
+def synthetic_routed_supervisor(inv, monkeypatch):
+    path = sessions.create("Synthetic routed session")
+    devices = audio.select_devices(inv, {})
+    sessions.update(path, devices=devices)
+    supervisor = recorder.Supervisor(path)
+    supervisor.started = 100
+    supervisor.last_poll = 105
+    supervisor.last_monotonic = 105
+    route = audio.Routing("synthetic-route", supervisor.data["devices"], path / "audio/routing.json")
+    route.modules = {"mic_loop": "42", "output_loop": "43"}
+    route.observe_devices(inv)
+    supervisor.routing = route
+    inv["sinks"].extend([{"index": 20, "name": route.remote}, {"index": 21, "name": route.local}])
+    inv["sink-inputs"] = []
+    modules = [
+        {"index": "42", "name": "module-loopback", "argument": f"source=mic sink={route.local}"},
+        {"index": "43", "name": "module-loopback", "argument": f"source={route.remote}.monitor sink=speakers"},
+    ]
+    monkeypatch.setattr(audio, "inventory", lambda: inv)
+    monkeypatch.setattr(audio, "module_inventory", lambda: modules)
+    monkeypatch.setattr(audio, "disk_check", lambda *_: None)
+    monkeypatch.setattr(route, "route_teams", lambda *_: None)
+    monkeypatch.setattr(recorder, "elapsed_time", lambda: 110)
+    monkeypatch.setattr(recorder.time, "monotonic", lambda: 110)
+    return supervisor, route, modules
+
+
+def test_reconcile_detects_suspend_when_monotonic_does_not_advance(inv, monkeypatch):
+    supervisor, _, _ = synthetic_routed_supervisor(inv, monkeypatch)
+    monkeypatch.setattr(recorder, "elapsed_time", lambda: 170)
+    monkeypatch.setattr(recorder.time, "monotonic", lambda: 110)
+    supervisor.reconcile()
+    gap = next(g for g in supervisor.gaps if "suspend" in g["reason"])
+    assert (gap["start"], gap["end"]) == (5, 70)
+    assert supervisor.health["mic_route_connected"]
+    supervisor.selector.close()
+
+
+@pytest.mark.parametrize("change", ["loopback", "device-incarnation"])
+def test_reconcile_repairs_lost_route_or_recreated_device(inv, monkeypatch, change):
+    supervisor, route, modules = synthetic_routed_supervisor(inv, monkeypatch)
+    if change == "loopback":
+        modules[:] = [m for m in modules if m["index"] != "42"]
+    else:
+        inv["sources"][0]["index"] = 999
+    calls = []
+    monkeypatch.setattr(route, "connect_mic", lambda name: calls.append(name))
+    supervisor.reconcile()
+    assert calls == ["mic"]
+    assert supervisor.health["mic_route_connected"]
+    assert any("route reconnected" in gap["reason"] for gap in supervisor.gaps)
+    supervisor.selector.close()
+
+
+def test_status_recalculates_age_of_a_frozen_snapshot(monkeypatch):
+    from shrutadhara.core import runtime_dir
+
+    path = sessions.create("Frozen worker")
+    sessions.update(path, recording="recording")
+    monkeypatch.setattr(recorder, "active", lambda: {"session": str(path)})
+    monkeypatch.setattr(recorder, "boot_identity", lambda: "same")
+    monkeypatch.setattr(recorder, "elapsed_time", lambda: 120)
+    atomic_json(runtime_dir() / "status.json", {"session_id": read_json(path / "session.json")["id"], "updated_elapsed": 100, "boot_id": "same", "health": {"microphone_present": True}, "progress_age_seconds": 1})
+    state = recorder.status()
+    assert state["health_stale"] and state["snapshot_age_seconds"] == 20
+    assert state["progress_age_seconds"] == 21
+
+
+def test_late_teams_binding_persists_only_changed_policy(inv, monkeypatch):
+    supervisor, route, _ = synthetic_routed_supervisor(inv, monkeypatch)
+    supervisor.data["devices"]["teams_pid"] = None
+    supervisor.persist_devices()
+    seen = []
+    update = sessions.update
+    def track(path, **fields):
+        seen.append(set(fields))
+        return update(path, **fields)
+    monkeypatch.setattr(sessions, "update", track)
+    inv["sink-inputs"] = [{"index": 9, "sink": 1, "properties": {"application.process.binary": "teams-for-linux", "application.process.id": "333"}}]
+    supervisor.reconcile()
+    assert read_json(supervisor.path / "session.json")["devices"]["teams_pid"] == "333"
+    assert sum("devices" in fields for fields in seen) == 1
+    supervisor.reconcile()
+    assert sum("devices" in fields for fields in seen) == 1
+    supervisor.selector.close()
+
+
+def test_ambiguous_participant_interval_closes_only_after_identified_playback(inv, monkeypatch):
+    supervisor, _, _ = synthetic_routed_supervisor(inv, monkeypatch)
+    supervisor.data["devices"]["teams_pid"] = None
+    clock = [110]
+    monkeypatch.setattr(recorder, "elapsed_time", lambda: clock[0])
+    monkeypatch.setattr(recorder.time, "monotonic", lambda: clock[0])
+    def stream(pid):
+        return {"index": 9, "sink": 1, "properties": {"application.process.binary": "teams-for-linux", "application.process.id": pid}}
+    inv["sink-inputs"] = [stream(None), stream("333")]
+    supervisor.reconcile()
+    assert read_json(supervisor.path / "session.json")["devices"]["teams_ambiguous"]
+    assert supervisor.missing_since["participants"] == 10
+    clock[0] = 115
+    inv["sink-inputs"] = [stream(None)]
+    supervisor.reconcile()
+    assert supervisor.missing_since["participants"] == 10
+    assert not [gap for gap in supervisor.gaps if gap["track"] == "participants"]
+    clock[0] = 120
+    inv["sink-inputs"] = []
+    supervisor.reconcile()
+    assert supervisor.missing_since["participants"] == 10
+    clock[0] = 125
+    inv["sink-inputs"] = [stream("333")]
+    supervisor.reconcile()
+    assert "participants" not in supervisor.missing_since
+    gaps = [gap for gap in supervisor.gaps if gap["track"] == "participants"]
+    assert len(gaps) == 1 and gaps[0]["start"] == 10 and gaps[0]["end"] == 25
+    persisted = read_json(supervisor.path / "session.json")["devices"]
+    assert persisted["teams_pid"] == "333" and not persisted["teams_ambiguous"]
+    supervisor.selector.close()

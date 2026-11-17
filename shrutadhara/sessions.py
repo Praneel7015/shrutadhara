@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .clock import boot_identity, elapsed_time
 from .core import (
     MeetingError,
     atomic_json,
@@ -135,6 +136,13 @@ def elapsed(data: dict) -> float:
         "recording",
         "stopping",
     }:
+        timeline = data.get("timeline", {})
+        if (timeline.get("clock") == "boottime" and
+                timeline.get("boot_id") == boot_identity() and
+                isinstance(timeline.get("start"), (int, float))):
+            return max(0, elapsed_time() - timeline["start"])
+        # Legacy sessions have no boot anchor; retain their original wall-time
+        # interpretation rather than silently rewriting historical timing.
         return max(
             0,
             (
