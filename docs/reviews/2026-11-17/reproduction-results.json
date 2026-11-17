@@ -1,0 +1,44 @@
+{
+  "module_unload_failure": {
+    "remaining_owned_modules": {},
+    "persisted_modules": {}
+  },
+  "native_audio_refusal": {
+    "adapter_calls": 2,
+    "error": "Transcript coverage incomplete. Review it or explicitly use --allow-partial"
+  },
+  "markdown": {
+    "active_image_preserved_in_transcript": true,
+    "active_image_preserved_in_notes": true,
+    "network_or_viewer_invoked": false
+  },
+  "oversized_notes": {
+    "request_characters": 201032,
+    "request_bytes": 601032,
+    "adapter_invoked": true,
+    "actual_hosted_calls": 0
+  },
+  "temporary_fixture": "/tmp/shruta-egm-proof-vkk6i6h3",
+  "provider_sigterm": {
+    "fake_provider_survives_parent_sigterm": true,
+    "hosted_calls": 0
+  },
+  "ffmpeg_parent_sigkill": {
+    "synthetic_child_survives": true,
+    "segments_before": 3,
+    "segments_after": 5,
+    "interval_seconds": 2.2,
+    "microphone_access": false
+  },
+  "segmented_export_negative_control": {
+    "four_1s_segments_preserve_tones": true,
+    "per_second_rms_approx": 2895,
+    "suspected_silence_reproduced": false
+  },
+  "historical_qa_revision": {
+    "historical_answer_unchanged": true,
+    "historical_answer_links_mutable_transcript": true,
+    "same_anchor_now_names_contradictory_text": true,
+    "hosted_calls": 0
+  }
+}
