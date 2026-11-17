@@ -199,6 +199,9 @@ def invoke(
     audio_path: Path | None = None,
     attempts: int = 3,
 ) -> dict:
+    from .sandbox import require_native_ai
+
+    require_native_ai()
     with cancellation():
         return _invoke(prompt, schema, workspace, cfg, audio_path, attempts)
 

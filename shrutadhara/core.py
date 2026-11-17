@@ -149,6 +149,10 @@ def notify(message: str, persistent: bool = False, tag: str | None = None) -> No
 
 def runtime_dir() -> Path:
     base = Path(os.environ.get("XDG_RUNTIME_DIR", f"/tmp/shrutadhara-{os.getuid()}"))
+    if os.environ.get("FLATPAK_ID"):
+        # PID identities are meaningful only inside this sandbox. Never let a
+        # native process recover or signal a sandbox worker using its PID.
+        return private_dir(base / "app" / os.environ["FLATPAK_ID"] / "shrutadhara")
     legacy_base = Path(os.environ.get("XDG_RUNTIME_DIR", f"/tmp/meeting-{os.getuid()}"))
     legacy = legacy_base / "meeting-recorder"
     old_lock = legacy / "recording.lock"

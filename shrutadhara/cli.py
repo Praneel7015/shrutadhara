@@ -430,6 +430,9 @@ def open_path(path: Path):
 
 
 def dispatch(args):
+    from .sandbox import validate_command
+
+    validate_command(args)
     command = args.command
     if command == "providers":
         from .providers import available_providers

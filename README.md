@@ -22,7 +22,7 @@ For a hands-on recording, playback and optional AI validation workflow, see the 
 
 `shruta show` also opens or focuses the window. `shruta start` returns the current active session when already recording, and repeated `shruta stop` is safe. Keep user-facing recording notices enabled.
 
-For an installed Python wheel, `shruta install-desktop` explicitly installs a user launcher and application-menu entry using that installation. The source installer is no longer required after a wheel install. Experimental native Arch/Debian artifacts and the npm launcher are described in the [distribution guide](docs/DISTRIBUTION.md) and [npm README](npm/README.md). npm/AUR listings and distribution repository inclusion require separate publication; source availability alone does not provide them.
+For an installed Python wheel, `shruta install-desktop` explicitly installs a user launcher and application-menu entry using that installation. The source installer is no longer required after a wheel install. Experimental native Arch/Debian artifacts and the npm launcher are described in the [distribution guide](docs/DISTRIBUTION.md) and [npm README](npm/README.md). The npm package is published; AUR submission is waiting for account registration to reopen. See the [signed APT installation guide](docs/APT_REPOSITORY.md) and [experimental Flatpak guide](docs/FLATPAK.md).
 
 The installer creates an isolated venv using `/usr/bin/python3` with system packages visible for GTK, a `~/.local/bin/shruta` launcher, and an application-menu entry. It does not enable recording, a login service, or hosted processing. Keep this project directory in place; the launcher points into it. Re-run the installer after moving it.
 
@@ -279,7 +279,7 @@ For a source installation, remove only its managed launcher and desktop entry af
 
 ## License
 
-The application source is available under the [MIT License](LICENSE). See [NOTICE](NOTICE) for the excluded development fixture and dependency notes. Experimental GitHub package releases use the public project identity. npm and AUR publication remain separate steps; see the [distribution guide](docs/DISTRIBUTION.md).
+The application source is available under the [MIT License](LICENSE). See [NOTICE](NOTICE) for the excluded development fixture and dependency notes. Experimental GitHub package releases use the public project identity. For available packages and pending distribution channels, see the [distribution guide](docs/DISTRIBUTION.md).
 
 ## Reliability patch development
 

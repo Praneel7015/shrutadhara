@@ -1,0 +1,44 @@
+name: Experimental Flatpak
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['shrutadhara/**', 'desktop/**', 'packaging/flatpak/**', '.github/workflows/flatpak.yml']
+  pull_request:
+    paths: ['shrutadhara/**', 'desktop/**', 'packaging/flatpak/**', '.github/workflows/flatpak.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: Export only tracked source files
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz --prefix=shrutadhara/ -o dist/shrutadhara-flatpak-source.tar.gz HEAD
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: shrutadhara-experimental-x86_64.flatpak
+          manifest-path: packaging/flatpak/io.github.Praneel7015.Shrutadhara.json
+          branch: experimental
+          cache-key: shrutadhara-gnome51-v1
+      - name: Install and test the actual runtime sandbox
+        run: |
+          flatpak install --user --noninteractive --assumeyes ./shrutadhara-experimental-x86_64.flatpak
+          flatpak run --command=sh io.github.Praneel7015.Shrutadhara -c '
+            set -eu
+            /app/bin/shruta --help
+            export PYTHONPATH=/app/share/shrutadhara
+            python3 -c "import jsonschema, gi, rpds; gi.require_version(\"Gtk\", \"4.0\"); from gi.repository import Gtk; from shrutadhara.gui import require_gtk_version; require_gtk_version(Gtk)"
+            pactl --version
+            ffmpeg -hide_banner -devices 2>&1 | grep pulse
+            ffmpeg -hide_banner -filters 2>&1 | grep astats
+            python3 /app/share/shrutadhara/shrutadhara/flatpak_smoke.py
+            if /app/bin/shruta start; then exit 1; fi
+            if /app/bin/shruta process; then exit 1; fi
+          '

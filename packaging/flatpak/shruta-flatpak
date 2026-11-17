@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+export PYTHONPATH=/app/share/shrutadhara
+export SHRUTA_ROOT="${SHRUTA_ROOT:-$HOME/Meetings/Flatpak}"
+if [ "$#" -eq 0 ]; then
+    set -- show
+fi
+exec python3 -m shrutadhara "$@"

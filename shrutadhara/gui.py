@@ -8,6 +8,7 @@ from pathlib import Path
 
 from . import audio, recorder, sessions
 from .core import MeetingError, atomic_json, config, config_path, now, read_json
+from .sandbox import is_flatpak, keep_window_open
 
 
 def ui_state(
@@ -230,10 +231,21 @@ def launch() -> int:
             self.location.add_css_class("dim-label")
             box.append(self.location)
             self.timer = GLib.timeout_add_seconds(1, self.tick)
+            self.connect("close-request", self.close_requested)
             self.connect("destroy", lambda *_: GLib.source_remove(self.timer))
             self.set_history(recent_sessions())
             self.tick()
             self.background(audio.inventory, self.set_devices)
+
+        def close_requested(self, *_):
+            # The last window owns the Flatpak sandbox lifetime. Retain it until
+            # capture finalization/local preparation has finished.
+            blocked = keep_window_open(self.busy, self.recording, self.process_requested)
+            if blocked:
+                self.message.set_text(
+                    "Stop recording and wait for local work to finish before closing this Flatpak window."
+                )
+            return blocked
 
         def background(self, function, done=None):
             if self.busy:
@@ -459,7 +471,9 @@ def launch() -> int:
                 )
                 self.record_button.set_label(flags["record_label"])
                 self.record_button.set_sensitive(flags["record_enabled"])
-                self.process_button.set_sensitive(flags["process_enabled"])
+                self.process_button.set_sensitive(flags["process_enabled"] and not is_flatpak())
+                if is_flatpak():
+                    self.process_button.set_tooltip_text("AI processing requires a native installation")
                 self.prepare_button.set_sensitive(flags["process_enabled"])
                 self.history.set_sensitive(flags["process_enabled"])
                 for name, button in self.audio_buttons.items():

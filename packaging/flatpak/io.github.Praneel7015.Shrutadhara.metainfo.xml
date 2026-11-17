@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.Praneel7015.Shrutadhara</id>
+  <name>Shrutadhara</name>
+  <summary>Record meetings and preserve conversations locally</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.praneel7015"><name>Shrutadhara contributors</name></developer>
+  <description>
+    <p>Hear everything. Preserve knowledge. Remember what matters with private local meeting recordings.</p>
+    <p>Shrutadhara records separate microphone and Teams participant audio on Linux desktops with PipeWire and PulseAudio compatibility. Prepare recordings locally and retain the original audio.</p>
+    <p>This experimental Flatpak supports recording and local preparation. AI transcription and notes require the native application and a separately configured agy installation. Give participants notice and obtain permission before recording.</p>
+  </description>
+  <launchable type="desktop-id">io.github.Praneel7015.Shrutadhara.desktop</launchable>
+  <url type="homepage">https://github.com/Praneel7015/shrutadhara</url>
+  <url type="bugtracker">https://github.com/Praneel7015/shrutadhara/issues</url>
+  <content_rating type="oars-1.1"/>
+  <supports><control>pointing</control><control>keyboard</control></supports>
+</component>
