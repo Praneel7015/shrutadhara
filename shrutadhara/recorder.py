@@ -91,61 +91,62 @@ def recover(path: Path | None = None) -> dict:
         paths = [path] if path else sessions.list_sessions()
         recovered = []
         for p in paths:
-            capture = p / "audio/capture-process.json"
-            if capture.exists():
-                writer = read_json(capture)
-                if (writer.get("identity") and
-                    process_identity(writer.get("pid", 0)) == writer["identity"]):
-                    raise MeetingError(
-                        "Owned capture process is still alive; wait for it to stop before recovery", 4
-                    )
-            data = read_json(p / "session.json")
-            journal = p / "audio/routing.json"
-            if journal.exists():
-                audio.restore_routes(journal)
-            if data["recording"] not in {
-                "starting",
-                "recording",
-                "stopping",
-                "interrupted",
-            }:
-                continue
-            if data["recording"] == "interrupted" and data.get("recovery_finalized"):
-                continue
-            audio.verify_archive_integrity(p)
-            if data["recording"] != "interrupted":
-                sessions.update(p, recording="interrupted")
-            epochs = data.get("epochs", [])
-            manifest, errors = audio.archive_manifest(p, epochs)
-            end = max((m["end"] for m in manifest), default=0)
-            sessions.update(
-                p,
-                ended_at=data.get("ended_at") or now(),
-                duration_seconds=max(data["duration_seconds"], end),
-            )
-            duration = max(data["duration_seconds"], end)
-            if manifest:
-                try:
-                    artifacts = audio.exports(p, manifest, duration)
-                    sessions.update(p, artifacts=artifacts, recovery_finalized=True)
-                except MeetingError:
-                    sessions.error(
-                        p,
-                        "recovery",
-                        "WAV export incomplete; originals retained for processing retry",
-                    )
-            sessions.error(
-                p,
-                "recovery",
-                "Recorder interrupted; original archives retained. Review recovered audio before processing.",
-            )
-            recovered.append(
-                {
-                    "session": str(p),
-                    "segments": len(manifest),
-                    "invalid_segments": len(errors),
-                }
-            )
+            with audio.artifact_lock(p):
+                capture = p / "audio/capture-process.json"
+                if capture.exists():
+                    writer = read_json(capture)
+                    if (writer.get("identity") and
+                        process_identity(writer.get("pid", 0)) == writer["identity"]):
+                        raise MeetingError(
+                            "Owned capture process is still alive; wait for it to stop before recovery", 4
+                        )
+                data = read_json(p / "session.json")
+                journal = p / "audio/routing.json"
+                if journal.exists():
+                    audio.restore_routes(journal)
+                if data["recording"] not in {
+                    "starting",
+                    "recording",
+                    "stopping",
+                    "interrupted",
+                }:
+                    continue
+                if data["recording"] == "interrupted" and data.get("recovery_finalized"):
+                    continue
+                audio.verify_archive_integrity(p)
+                if data["recording"] != "interrupted":
+                    sessions.update(p, recording="interrupted")
+                epochs = data.get("epochs", [])
+                manifest, errors = audio.archive_manifest(p, epochs)
+                end = max((m["end"] for m in manifest), default=0)
+                sessions.update(
+                    p,
+                    ended_at=data.get("ended_at") or now(),
+                    duration_seconds=max(data["duration_seconds"], end),
+                )
+                duration = max(data["duration_seconds"], end)
+                if manifest:
+                    try:
+                        artifacts = audio.exports(p, manifest, duration)
+                        sessions.update(p, artifacts=artifacts, recovery_finalized=True)
+                    except MeetingError:
+                        sessions.error(
+                            p,
+                            "recovery",
+                            "WAV export incomplete; originals retained for processing retry",
+                        )
+                sessions.error(
+                    p,
+                    "recovery",
+                    "Recorder interrupted; original archives retained. Review recovered audio before processing.",
+                )
+                recovered.append(
+                    {
+                        "session": str(p),
+                        "segments": len(manifest),
+                        "invalid_segments": len(errors),
+                    }
+                )
         return {"recovered": recovered}
 
 
@@ -397,13 +398,14 @@ class Supervisor:
                                 self.fatal = True
             if metadata_ok:
                 try:
-                    manifest, errors = audio.archive_manifest(self.path, self.epochs)
-                    if not manifest:
-                        raise MeetingError("No valid audio archive segments", 5)
-                    artifacts = audio.exports(self.path, manifest, duration)
-                    sessions.update(self.path, artifacts=artifacts)
-                    if errors:
-                        self.fatal = True
+                    with audio.artifact_lock(self.path):
+                        manifest, errors = audio.archive_manifest(self.path, self.epochs)
+                        if not manifest:
+                            raise MeetingError("No valid audio archive segments", 5)
+                        artifacts = audio.exports(self.path, manifest, duration)
+                        sessions.update(self.path, artifacts=artifacts)
+                        if errors:
+                            self.fatal = True
                 except (MeetingError, OSError, ValueError, KeyError):
                     self.fatal = True
                     self.report_error("finalization", "Export incomplete; originals retained for recovery")

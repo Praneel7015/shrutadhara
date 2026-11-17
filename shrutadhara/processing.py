@@ -122,6 +122,11 @@ def write_chunk(source: Path, destination: Path, start: int, end: int):
 
 
 def prepare(session: Path, cfg: dict) -> dict:
+    with audio.artifact_lock(session):
+        return _prepare(session, cfg)
+
+
+def _prepare(session: Path, cfg: dict) -> dict:
     data = read_json(session / "session.json")
     if data["recording"] in {"starting", "recording", "stopping"}:
         raise MeetingError("Stop or recover the recording before processing", 4)

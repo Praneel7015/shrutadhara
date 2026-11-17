@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import re
+import selectors
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
-from .core import MeetingError, atomic_json, digest, private_dir, read_json, run
+from .child import guarded_command
+from .core import MeetingError, atomic_json, digest, locked, private_dir, read_json, run
 
 
 def pulse(*args: str):
@@ -629,6 +633,54 @@ def archive_manifest(
     return manifest, errors
 
 
+def artifact_lock(session: Path):
+    """Lock ordering: recording/processing -> audio artifacts -> metadata."""
+    return locked(session / ".audio-artifacts.lock", blocking=True)
+
+
+def pcm_blocks(command: list[str], timeout: float):
+    """Yield aligned PCM blocks while bounding reads and process exit together."""
+    deadline = time.monotonic() + timeout
+    proc = subprocess.Popen(guarded_command(command), stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    selector = selectors.DefaultSelector()
+    pending = b""
+    try:
+        os.set_blocking(proc.stdout.fileno(), False)
+        selector.register(proc.stdout, selectors.EVENT_READ)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise MeetingError("Audio export exceeded its deadline; originals retained", 5)
+            if not selector.select(min(1, remaining)):
+                continue
+            try:
+                block = os.read(proc.stdout.fileno(), 65536)
+            except BlockingIOError:
+                continue
+            if not block:
+                break
+            block = pending + block
+            size = len(block) - len(block) % 2
+            pending = block[size:]
+            if size:
+                yield block[:size]
+        if pending:
+            raise MeetingError("Audio export ended with an incomplete PCM sample", 5)
+        try:
+            code = proc.wait(timeout=max(.001, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired as exc:
+            raise MeetingError("Audio export exceeded its deadline; originals retained", 5) from exc
+        if code:
+            raise MeetingError("Failed to export archive; originals retained", 5)
+    finally:
+        selector.close()
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        proc.stdout.close()
+
+
 def exports(session: Path, manifest: list[dict], duration: float) -> dict:
     """Stream PCM to aligned WAVs; never load an entire meeting into memory."""
     import wave
@@ -665,28 +717,15 @@ def exports(session: Path, manifest: list[dict], duration: float) -> dict:
                     "s16le",
                     "-",
                 ]
-                proc = subprocess.Popen(
-                    command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
-                )
-                try:
-                    while block := proc.stdout.read(65536):
-                        if skip:
-                            cut = min(skip * 2, len(block))
-                            block = block[cut:]
-                            skip -= cut // 2
-                        remaining = max(0, total - cursor)
-                        block = block[: remaining * 2]
-                        wav.writeframesraw(block)
-                        cursor += len(block) // 2
-                    if proc.wait(timeout=30):
-                        raise MeetingError(
-                            "Failed to export archive; originals retained", 5
-                        )
-                finally:
-                    if proc.poll() is None:
-                        proc.kill()
-                        proc.wait()
-                    proc.stdout.close()
+                for block in pcm_blocks(command, timeout=max(120, entry["end"] - entry["start"])):
+                    if skip:
+                        cut = min(skip * 2, len(block))
+                        block = block[cut:]
+                        skip -= cut // 2
+                    remaining = max(0, total - cursor)
+                    block = block[: remaining * 2]
+                    wav.writeframesraw(block)
+                    cursor += len(block) // 2
             if cursor < total:
                 write_silence(wav, total - cursor)
         tmp.replace(target)
