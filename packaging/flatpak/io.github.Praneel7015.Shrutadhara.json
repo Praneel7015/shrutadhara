@@ -44,8 +44,8 @@
         }
       ],
       "post-install": [
-        "install -Dm644 LGPL /app/share/licenses/pulseaudio/LGPL",
-        "install -Dm644 LICENSE /app/share/licenses/pulseaudio/LICENSE"
+        "install -Dm644 /run/build/pulseaudio-clients/LGPL /app/share/licenses/pulseaudio/LGPL",
+        "install -Dm644 /run/build/pulseaudio-clients/LICENSE /app/share/licenses/pulseaudio/LICENSE"
       ]
     },
     {
@@ -80,7 +80,7 @@
         }
       ],
       "post-install": [
-        "install -Dm644 COPYING.LGPLv2.1 /app/share/licenses/ffmpeg/COPYING.LGPLv2.1"
+        "install -Dm644 /run/build/ffmpeg-audio/COPYING.LGPLv2.1 /app/share/licenses/ffmpeg/COPYING.LGPLv2.1"
       ]
     },
     {
