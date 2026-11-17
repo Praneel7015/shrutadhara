@@ -32,7 +32,9 @@
         "-Dtests=false",
         "-Ddatabase=simple",
         "-Dauto_features=disabled",
-        "-Dglib=enabled"
+        "-Dglib=enabled",
+        "-Dbashcompletiondir=no",
+        "-Dzshcompletiondir=no"
       ],
       "sources": [
         {
@@ -42,7 +44,8 @@
         }
       ],
       "post-install": [
-        "install -Dm644 LGPL /app/share/licenses/pulseaudio/LGPL"
+        "install -Dm644 LGPL /app/share/licenses/pulseaudio/LGPL",
+        "install -Dm644 LICENSE /app/share/licenses/pulseaudio/LICENSE"
       ]
     },
     {

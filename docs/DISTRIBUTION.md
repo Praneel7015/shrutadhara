@@ -16,7 +16,7 @@ Run `shruta doctor`, then `shruta show`. Do not interpret a successful installat
 
 ## Maintainer release sequence
 
-1. Update Python and npm versions together. Keep release filenames synchronized; initial release is 0.1.0, experimental. Run tests, Ruff and package checks. Do not ship meetings, fixtures, configuration, credentials or generated notes.
+1. Update Python and npm versions together. Keep release filenames synchronized; the latest published release is 0.1.1, experimental. Run tests, Ruff and package checks. Do not ship meetings, fixtures, configuration, credentials or generated notes.
 2. Push reviewed source. The Distribution packages workflow builds source/wheel, an npm tarball containing that exact wheel, and a reproducible architecture-independent `.deb`. A disposable Arch runner generates PKGBUILD/.SRCINFO from the exact source hash, runs makepkg tests, and installs/removes the resulting package. A disposable Ubuntu24.04 runner installs/removes the `.deb`. Neither workflow records or calls AI.
 3. Only after those checks pass, tag that commit `vVERSION` and push the tag. Experimental release workflow repeats the package checks, verifies tag/source/npm versions, generates SHA256SUMS for all assets, and publishes a GitHub **prerelease**. It fails rather than replacing an existing release. Do not move published tags or replace package bytes under an existing version. There is no automatic npm or AUR publication.
 4. Initial npm publication needs the package owner's npm account and interactive authentication: download and verify the exact release tarball; `npm login`; `npm publish ./shrutadhara-VERSION.tgz --access public --tag experimental --ignore-scripts`. npm may require 2FA. Never send tokens/passwords through chat. The package name must still be available when published.
@@ -56,3 +56,17 @@ Native packages own `/usr/bin/shruta` and their system desktop entry; never dele
 For the optional user call-monitor unit, copy the source template and review `ExecStart` before enabling: source default `%h/.local/bin/shruta`, native `/usr/bin/shruta`, npm the absolute wrapper path from `command -v shruta`. For uninstall, first `systemctl --user disable --now shrutadhara-call-monitor.service`, remove only the unit you installed and run `systemctl --user daemon-reload`. Do not remove unrelated user services.
 
 Version0.1.1 is being prepared as a reliability patch. The published v0.1.0 tag remains unchanged. Its first release used separately verified tag artifacts after an artifact-directory aggregation error; the flattening fix is on main. A new tag/release is a separate publication step.
+
+## Cross-distribution coverage
+
+| Route | Availability | Scope |
+|---|---|---|
+| Arch/CachyOS native package | Published GitHub release | Native recording and optional configured agy |
+| AUR / yay / paru | Submission blocked by account registration closure | Prepared recipe; no AUR listing yet |
+| Debian/Ubuntu APT | Signed experimental repository | amd64 Debian 13 / Ubuntu 24.04 or newer |
+| npm | Published experimental package | Linux launcher; system Python/GTK/audio tools required |
+| Flatpak | Development build workflow | x86_64 recording/local preparation; shared GNOME runtime |
+| Source/wheel | Published GitHub release | Linux with supported native dependencies |
+| RPM / AppImage / Nix | Not implemented | Candidates after Flatpak acceptance and maintainer testing |
+
+Flatpak is the first route intended to span distributions without rebuilding native packages. Its runtime must still work with the desktop's audio and display services. Package format portability does not establish audio compatibility on every distribution. It is not a Windows/macOS package. Fedora/openSUSE can eventually use the validated Flatpak rather than requiring an RPM immediately. A Flathub listing and official distro repository admission each require separate review.

@@ -1,11 +1,13 @@
 # Arch/CachyOS package preparation
 
+The v0.1.1 native package and AUR recipe are available as GitHub release assets. AUR submission is pending: new account registration is temporarily closed. Do not automate registration retries or request a bypass; use `sudo pacman -U ./shrutadhara-0.1.1-1-any.pkg.tar.zst` with the checksum-verified released package meanwhile. `yay -S shrutadhara` will work only after a maintained AUR entry is actually published.
+
 This is release packaging tooling, not an AUR publication or an availability claim. The experimental application is `shrutadhara`; the executable is `shruta`. Build a package only after reviewing the source and the capture/AI limitations in VALIDATION.md. agy is optional, externally installed and authenticated; recording/export do not require it. No fake package dependency or silent provider fallback is introduced.
 
-The release owner must first build the final Python source archive named `shrutadhara-0.1.0.tar.gz`, with root `shrutadhara-0.1.0/`, and upload those exact bytes as the GitHub `v0.1.0` release asset when publication is authorized. Generate Arch metadata *after* the source is final:
+The release owner must first build the final Python source archive named `shrutadhara-0.1.1.tar.gz`, with root `shrutadhara-0.1.1/`, and upload those exact bytes as the GitHub `v0.1.1` release asset when publication is authorized. Generate Arch metadata *after* the source is final:
 
 ```sh
-python packaging/arch/prepare.py /absolute/path/to/shrutadhara-0.1.0.tar.gz --output /tmp/shrutadhara-aur
+python packaging/arch/prepare.py /absolute/path/to/shrutadhara-0.1.1.tar.gz --output /tmp/shrutadhara-aur
 cd /tmp/shrutadhara-aur
 makepkg --verifysource
 makepkg --cleanbuild --check
