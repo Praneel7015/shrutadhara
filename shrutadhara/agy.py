@@ -205,6 +205,8 @@ def invoke(
 
 def _stop_group(proc):
     """Terminate the owned group before reaping its leader and freeing its PID."""
+    if proc.returncode is not None:
+        return  # communicate may already have reaped it; never signal a recycled PGID.
     try:
         os.killpg(proc.pid, signal.SIGTERM)
     except ProcessLookupError:
@@ -301,7 +303,7 @@ def _invoke(
                 (run_dir / "stderr.log").open("w+") as err,
             ):
                 proc = subprocess.Popen(
-                    guarded_command(command),
+                    guarded_command(command, supervise_group=True),
                     cwd=workspace,
                     env=env,
                     stdin=subprocess.PIPE,
@@ -354,7 +356,10 @@ def _invoke(
             return value
         except KeyboardInterrupt:
             with contextlib.suppress(OSError, MeetingError):
-                atomic_json(run_dir / "attempt.json", {"at": now(), "attempt": attempt + 1, "state": "cancelled"})
+                atomic_json(
+                    run_dir / "attempt.json",
+                    {"at": now(), "attempt": attempt + 1, "state": "cancelled"},
+                )
             raise
         except (AIError, OSError) as exc:
             atomic_json(

@@ -151,7 +151,7 @@ def test_timeout_kills_process_group_and_stops_after_three_attempts(
 
     class Process:
         pid = 999999
-        returncode = 0
+        returncode = None
 
         def __init__(self, *a, **k):
             calls.append(1)
