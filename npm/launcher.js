@@ -9,6 +9,7 @@ function fail(message) { console.error(message); process.exit(3); }
 if (process.platform !== 'linux') fail('This native recorder supports Linux only.');
 const root = join(process.env.XDG_DATA_HOME || join(homedir(), '.local/share'), 'shrutadhara', 'npm-runtime');
 const python = join(root, 'bin/python');
+const wrapperVersion = require('./package.json').version;
 function run(command, args, timeout) {
   const result = spawnSync(command, args, {stdio: 'inherit', shell: false, timeout});
   if (result.error) fail(result.error.message);
@@ -21,6 +22,12 @@ function checkRuntime() {
     const st = lstatSync(directory);
     if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== process.getuid() || (st.mode & 0o022)) fail('Unsafe managed runtime directory: ' + directory);
   }
+}
+function requireCompatibleRuntime(command, checkArgs) {
+  const check = spawnSync(command, checkArgs, {encoding: 'utf8', shell: false, timeout: 10000, maxBuffer: 4096});
+  if (check.error || check.status !== 0) fail('Cannot verify native runtime version. Run shruta setup-native, or repair the explicitly configured native installation.');
+  const nativeVersion = check.stdout.trim();
+  if (nativeVersion !== wrapperVersion) fail(`Native runtime ${nativeVersion || 'unknown'} does not match npm launcher ${wrapperVersion}. Run shruta setup-native explicitly, or select a matching native installation.`);
 }
 const args = process.argv.slice(2);
 if (args[0] === 'setup-native') {
@@ -50,8 +57,10 @@ const override = process.env.SHRUTA_NATIVE_EXECUTABLE;
 if (override) {
   if (!override.startsWith('/') || !existsSync(override)) fail('SHRUTA_NATIVE_EXECUTABLE must be an existing absolute native executable.');
   if (realpathSync(override) === realpathSync(__filename)) fail('Refusing recursive launcher configuration.');
+  requireCompatibleRuntime(override, ['--version']);
   process.exit(run(override, args));
 }
 checkRuntime();
 if (!existsSync(python)) fail('Native runtime is not configured. Run shruta setup-native, or set SHRUTA_NATIVE_EXECUTABLE to an absolute native shruta command. See npm/README.md.');
+requireCompatibleRuntime(python, ['-c', 'from importlib.metadata import version; print(version("shrutadhara"))']);
 process.exit(run(python, ['-m', 'shrutadhara', ...args]));

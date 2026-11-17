@@ -22,7 +22,20 @@ def ui_state(
     }
 
 
-def launch_processing(path: Path):
+def require_gtk_version(gtk):
+    if (gtk.get_major_version(), gtk.get_minor_version()) < (4, 10):
+        raise MeetingError("GUI requires GTK 4.10 or newer for recording confirmations", 3)
+
+
+def output_state(path: Path | None, data: dict | None) -> dict:
+    return {
+        "folder": data is not None,
+        "notes": bool(data and data["notes"] in {"complete", "partial"}),
+        "transcript": bool(path and (path / "transcript/full-transcript.md").exists()),
+    }
+
+
+def launch_processing(path: Path, prepare_only: bool = False):
     command = [
         sys.executable,
         "-m",
@@ -31,6 +44,8 @@ def launch_processing(path: Path):
         "--session",
         str(path),
     ]
+    if prepare_only:
+        command.append("--prepare-only")
     with (path / "logs/processing.log").open("a") as log:
         return subprocess.Popen(
             command,
@@ -52,6 +67,7 @@ def launch() -> int:
         raise MeetingError(
             "GUI needs GTK 4 and python-gobject. The CLI works without them.", 3
         ) from exc
+    require_gtk_version(Gtk)
     if not Gtk.init_check():
         raise MeetingError("No graphical display available; use the CLI", 3)
     from .cli import HOSTED, PRIVACY, artifact, doctor, open_path
@@ -62,7 +78,7 @@ def launch() -> int:
                 application=app,
                 title="Shrutadhara",
                 default_width=430,
-                resizable=False,
+                resizable=True,
             )
             self.busy = False
             self.path = None
@@ -78,7 +94,14 @@ def launch() -> int:
                 margin_start=20,
                 margin_end=20,
             )
-            self.set_child(box)
+            scroll = Gtk.ScrolledWindow(
+                hscrollbar_policy=Gtk.PolicyType.NEVER,
+                propagate_natural_height=True,
+                min_content_height=320,
+                max_content_height=700,
+            )
+            scroll.set_child(box)
+            self.set_child(scroll)
             heading = Gtk.Label(label="Shrutadhara", xalign=0)
             heading.add_css_class("title-2")
             box.append(heading)
@@ -405,15 +428,8 @@ def launch() -> int:
                     self.health_label.set_text(health_text)
                 if data:
                     self.location.set_text(str(self.path))
-                    self.output_buttons["notes"].set_sensitive(
-                        data["notes"] in {"complete", "partial"}
-                    )
-                    self.output_buttons["transcript"].set_sensitive(
-                        (self.path / "transcript/full-transcript.md").exists()
-                    )
-                else:
-                    for button in self.output_buttons.values():
-                        button.set_sensitive(False)
+                for name, enabled in output_state(self.path, data).items():
+                    self.output_buttons[name].set_sensitive(enabled)
             except MeetingError as exc:
                 self.message.set_text(str(exc))
             return True

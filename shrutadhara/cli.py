@@ -336,7 +336,12 @@ def doctor(
         gi.require_version("Gtk", "4.0")
         from gi.repository import Gtk
 
+        from .gui import require_gtk_version
+
+        require_gtk_version(Gtk)
         report["gui"] = f"GTK {Gtk.get_major_version()}.{Gtk.get_minor_version()}"
+    except MeetingError as exc:
+        report["gui"] = str(exc)
     except (ImportError, ValueError):
         report["gui"] = (
             "Unavailable: install GTK 4 and python-gobject (CLI still works)"
