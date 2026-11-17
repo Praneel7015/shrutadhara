@@ -25,14 +25,15 @@ def tool(name):
 
 @pytest.fixture
 def wheel(tmp_path):
-    path = tmp_path / 'shrutadhara-0.1.0-py3-none-any.whl'
+    version = json.loads((ROOT / 'npm/package.json').read_text())['version']
+    path = tmp_path / f'shrutadhara-{version}-py3-none-any.whl'
     with zipfile.ZipFile(path, 'w') as archive:
         archive.writestr('shrutadhara/__init__.py', '')
-        archive.writestr('shrutadhara-0.1.0.dist-info/METADATA', 'Name: shrutadhara\nVersion: 0.1.0\n')
-        archive.writestr('shrutadhara-0.1.0.dist-info/licenses/LICENSE', 'MIT')
-        archive.writestr('shrutadhara-0.1.0.dist-info/licenses/NOTICE', 'No audio bundled')
-        archive.writestr('shrutadhara-0.1.0.dist-info/RECORD', 'old wheel paths')
-        archive.writestr('shrutadhara-0.1.0.data/data/share/applications/io.github.Praneel7015.Shrutadhara.desktop', '[Desktop Entry]')
+        archive.writestr(f'shrutadhara-{version}.dist-info/METADATA', f'Name: shrutadhara\nVersion: {version}\n')
+        archive.writestr(f'shrutadhara-{version}.dist-info/licenses/LICENSE', 'MIT')
+        archive.writestr(f'shrutadhara-{version}.dist-info/licenses/NOTICE', 'No audio bundled')
+        archive.writestr(f'shrutadhara-{version}.dist-info/RECORD', 'old wheel paths')
+        archive.writestr(f'shrutadhara-{version}.data/data/share/applications/io.github.Praneel7015.Shrutadhara.desktop', '[Desktop Entry]')
     return path
 
 

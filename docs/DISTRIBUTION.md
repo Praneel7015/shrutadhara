@@ -10,7 +10,7 @@ Arch/CachyOS: download the `.pkg.tar.zst`, then `sudo pacman -U ./shrutadhara-*.
 
 Debian 13 / Ubuntu 24.04 or newer: download the `.deb`, then `sudo apt install ./shrutadhara_*-1_all.deb`. It requires Python >=3.11, GTK >=4.10, distribution jsonschema >=4.10, FFmpeg, Pulse compatibility utilities, PipeWire Pulse and WirePlumber. Older distributions may fail dependency resolution and are unsupported by this native package. The Ubuntu CI checks actual install/import/help/removal; a release asset is not Debian archive admission or an APT repository. Review APT's dependency transaction on a customized audio stack.
 
-npm: until registry publication, download the release `.tgz`, then `npm install --global ./shrutadhara-0.1.0.tgz --ignore-scripts`. After publication use `npm install --global shrutadhara@experimental --ignore-scripts`. Install system dependencies first, then run `shruta setup-native` explicitly. The matching application wheel is bundled and checked; pip may fetch Python dependency wheels. See [npm README](../npm/README.md). Never install two competing `shruta` launchers into the same PATH location. Prefer the native package on Arch/Debian.
+npm: until registry publication, download the release `.tgz`, then `npm install --global ./shrutadhara-VERSION.tgz --ignore-scripts`. After publication use `npm install --global shrutadhara@experimental --ignore-scripts`. Install system dependencies first, then run `shruta setup-native` explicitly. The matching application wheel is bundled and checked; pip may fetch Python dependency wheels. See [npm README](../npm/README.md). Never install two competing `shruta` launchers into the same PATH location. Prefer the native package on Arch/Debian.
 
 Run `shruta doctor`, then `shruta show`. Do not interpret a successful installation as transcription capability validation. Test live capture using [TEST_DRIVE.md](TEST_DRIVE.md).
 
@@ -38,3 +38,20 @@ python tools/check_release.py /tmp/shrutadhara-dist
 ```
 
 Use new staging directories. The `.deb` builder uses Debian's documented ar format without executing the application or requiring root/dpkg on the build host. CI uses real dpkg/APT to validate it. No maintainer scripts or audio-service units are installed. Existing recordings and configuration are outside package-owned paths and retained on removal.
+
+## Upgrade and removal
+
+Stop recording and processing before changing the installation. Keep only one intended `shruta` executable first in PATH (`command -v shruta`). No removal command below deletes meetings or configuration.
+
+| Channel | Upgrade | Remove application |
+|---|---|---|
+| Source checkout | Pull reviewed source, rerun `bash install.sh`; rebuild the venv after a Python ABI upgrade | Remove only the managed `~/.local/bin/shruta` and user desktop entry; then remove the checkout/venv if desired |
+| Arch/AUR | Install the reviewed newer package with pacman/AUR helper | `sudo pacman -R shrutadhara` |
+| Debian/Ubuntu | `sudo apt install ./shrutadhara_VERSION-1_all.deb` | `sudo apt remove shrutadhara` |
+| npm | Upgrade the wrapper, then explicitly `shruta setup-native` for its bundled matching wheel | `npm uninstall --global shrutadhara`; remove only the managed npm-runtime separately after stopping work |
+
+Native packages own `/usr/bin/shruta` and their system desktop entry; never delete these manually or add a shadow launcher to work around a user-service template. If you explicitly ran `install-desktop`, inspect its managed user files separately. A source or npm user launcher can shadow a native installation after migration; resolve that PATH ownership explicitly.
+
+For the optional user call-monitor unit, copy the source template and review `ExecStart` before enabling: source default `%h/.local/bin/shruta`, native `/usr/bin/shruta`, npm the absolute wrapper path from `command -v shruta`. For uninstall, first `systemctl --user disable --now shrutadhara-call-monitor.service`, remove only the unit you installed and run `systemctl --user daemon-reload`. Do not remove unrelated user services.
+
+Version0.1.1 is being prepared as a reliability patch. The published v0.1.0 tag remains unchanged. Its first release used separately verified tag artifacts after an artifact-directory aggregation error; the flattening fix is on main. A new tag/release is a separate publication step.

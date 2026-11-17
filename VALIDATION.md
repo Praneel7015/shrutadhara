@@ -60,3 +60,9 @@ The recording/CLI/GUI implementation is available for manual use and further acc
 Local suite: 125 passed. Python3.11/jsonschema4.10.3 minimum dependency run: 124 passed, one GTK availability skip. Native Arch build, test execution and extracted CLI smoke succeeded with temporary Python build dependencies and explicit makepkg --nodeps; this is not clean-chroot installation evidence. The distribution workflows perform actual install/import/help/removal on disposable Ubuntu24.04 and Arch runners. npm release bundles a matching SHA256-checked wheel; default setup is explicit. Debian output uses reproducible ar/tar layout, no maintainer scripts, and GTK>=4.10 dependencies. These checks do not validate real meeting recognition, device switching or long recordings.
 
 A packed npm tarball was installed into an isolated temporary HOME/XDG prefix. Default bundled-wheel setup completed successfully and CLI help passed outside the source directory. No recording, hosted AI, system installation or user configuration was used by that smoke test.
+
+## EGM reliability patch development — 0.1.1
+
+The EGM review and parallel implementation addressed process lifetime, shutdown, call-state reconciliation, output evidence, routing and installation issues. See [implementation status](docs/reviews/2026-11-17/IMPLEMENTATION_STATUS.md) for commits, regressions, compatibility behavior and remaining acceptance. Current local default suite:210 passed plus two subtests; Python3.11/jsonschema4.10.3:209 passed, one GTK availability skip, plus two subtests. Tests include real synthetic FFmpeg and local fake process groups, never live recording or hosted AI.
+
+Package installation CI for the earlier main baseline passed in [run43935549226](https://github.com/Praneel7015/shrutadhara/actions/runs/43935549226). This is installation evidence for that commit, not proof of live capture, GUI acceptance or the current patch's CI outcome.

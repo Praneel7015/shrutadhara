@@ -1,6 +1,6 @@
 {
   "name": "shrutadhara",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "license": "MIT",
   "description": "Experimental Linux launcher for Shrutadhara, the local-first AI meeting assistant",

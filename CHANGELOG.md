@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 — development, experimental
+
+- Bind capture children and hosted provider groups to parent lifetime; terminate owned descendants on cancellation and hard parent death.
+- Guarantee teardown despite metadata failure; retain failed module ownership and serialize repair/export/preparation.
+- Reconcile Teams transitions without dropping events and verify owned-session Stop at control dispatch.
+- Track suspend-aware timelines, fresh worker status, exact route/device identity and unambiguous Teams selection.
+- Preserve historical Q&A evidence, verify accepted output revisions, render model text literally, and bound serialized notes prompts.
+- Reject mismatched npm runtimes, enforce GTK4.10, collect Arch regressions, and add recent-session/local audio controls.
+
+Live acceptance and recognition accuracy remain outstanding; this is not a daily-use reliability claim.
+
 ## 0.1.0 — experimental
 
 - Added pinned-source Arch/AUR packaging and native Debian package builds.

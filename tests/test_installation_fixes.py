@@ -118,3 +118,12 @@ def test_active_session_selection_synchronizes_existing_history(tmp_path):
     assert items[index][0] == active
     empty, index = gui.history_selection([], None)
     assert empty == [] and index == 0
+
+
+def test_application_and_distribution_versions_agree():
+    import tomllib
+
+    from shrutadhara import __version__
+    project = tomllib.loads((ROOT / 'pyproject.toml').read_text())['project']['version']
+    wrapper = json.loads((ROOT / 'npm/package.json').read_text())['version']
+    assert __version__ == project == wrapper

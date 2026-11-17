@@ -5,6 +5,8 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
+# Source launcher default. Native packages: /usr/bin/shruta watch.
+# npm: substitute the absolute wrapper path before enabling this user unit.
 ExecStart=%h/.local/bin/shruta watch
 Restart=on-failure
 RestartSec=10

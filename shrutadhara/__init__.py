@@ -3,4 +3,4 @@
 Local capture first; hosted processing only with explicit consent.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"

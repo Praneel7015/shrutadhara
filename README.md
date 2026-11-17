@@ -26,7 +26,7 @@ For an installed Python wheel, `shruta install-desktop` explicitly installs a us
 
 The installer creates an isolated venv using `/usr/bin/python3` with system packages visible for GTK, a `~/.local/bin/shruta` launcher, and an application-menu entry. It does not enable recording, a login service, or hosted processing. Keep this project directory in place; the launcher points into it. Re-run the installer after moving it.
 
-Required system tools: `ffmpeg`/`ffprobe`, `pactl` (Arch package `libpulse`), running PipeWire/Pulse compatibility and WirePlumber, Python ≥3.11. GUI: `gtk4` and `python-gobject`. Optional: `notify-send` (`libnotify`), `xdg-open` (`xdg-utils`), systemd user services, and `agy`.
+Required system tools: `ffmpeg`/`ffprobe`, `pactl` (Arch package `libpulse`), running PipeWire/Pulse compatibility and WirePlumber, Python ≥3.11. GUI: GTK ≥4.10 (`gtk4`) and `python-gobject`. Optional: `notify-send` (`libnotify`), `xdg-open` (`xdg-utils`), systemd user services, and `agy`.
 
 If dependencies are missing, review `shruta doctor`; install only those you need using your usual package manager. The application never installs audio engines or changes system audio configuration files.
 
@@ -139,7 +139,7 @@ References: [headless and structured output](https://antigravity.google/docs/cli
 
 The pipeline validates both tracks, preserves the originals, and makes unnormalized 16 kHz mono PCM WAV derivatives. Default chunks contain five minutes of core audio plus two seconds of boundary context, with a conservative **application** ceiling of 16 MiB. Exact sample offsets, hashes, chronological order, and overlap boundaries are persisted. Explicit provider size/context failures bisect chunks to a minimum 30-second core; other failures never trigger arbitrary splitting.
 
-Native processing uses `read_file` only; commands, file writes, plugins, and URL access are denied. The application never uses Whisper, another transcription engine, external API credentials, or a fallback provider. Intermediate results are private and retained. Three attempts are allowed for transient transport errors with bounded backoff and a ten-minute deadline; provider blocks, authentication failures, contaminated output, and unsupported input stop processing. Rerun `shruta process` to resume accepted chunks rather than repeat them.
+Native processing uses `read_file` only; commands, file writes, plugins, and URL access are denied. The application never uses Whisper, another transcription engine, external API credentials, or a fallback provider. Intermediate results are private and retained. Three attempts are allowed for transient transport errors with bounded backoff and a ten-minute deadline per attempt (up to about thirty minutes per chunk plus cleanup/backoff); provider blocks, authentication failures, contaminated output, and unsupported input stop processing. Rerun `shruta process` to resume accepted chunks rather than repeat them.
 
 Local and remote tracks are transcribed separately. Speaker labels represent track provenance, not verified identity; speaker names are not invented. Acoustic bleed from speakers into a microphone can appear on both tracks—use a headset for the best separation. Model timestamps are approximate. Unintelligible speech is marked. Ambiguous chunk boundaries retain both readings and prevent a claim of complete coverage.
 
@@ -230,22 +230,27 @@ Optional notification-only login service:
 ```bash
 mkdir -p ~/.config/systemd/user
 cp desktop/shrutadhara-call-monitor.service ~/.config/systemd/user/
+# Check the executable for your installation, then edit ExecStart if needed:
+command -v shruta
+systemctl --user edit --full shrutadhara-call-monitor.service
 systemctl --user daemon-reload
 systemctl --user enable --now shrutadhara-call-monitor.service
 # Undo:
 systemctl --user disable --now shrutadhara-call-monitor.service
 ```
 
-Hyprland examples (add manually, choosing unused bindings):
+The copied unit defaults to the source launcher `%h/.local/bin/shruta`. For native packages use `/usr/bin/shruta`; for npm use the absolute wrapper path reported by `command -v shruta`. Quote paths containing spaces in `ExecStart`, and double any literal percent signs. The template is in the source release; native package users need not create a shadow launcher.
+
+Hyprland examples (add manually, choosing unused bindings; use the absolute installed path if its PATH differs):
 
 ```ini
-bind = SUPER SHIFT, R, exec, ~/.local/bin/shruta gui
-bind = SUPER SHIFT, S, exec, ~/.local/bin/shruta stop
+bind = SUPER SHIFT, R, exec, shruta show
+bind = SUPER SHIFT, S, exec, shruta stop
 ```
 
 `shruta shortcuts` shows setup commands for Hyprland, Sway, KDE and GNOME. In the window, the defaults are **Ctrl+Shift+R** to start and **Ctrl+Shift+S** to stop. Change them with `shruta shortcuts --start '<Control><Alt>r' --stop '<Control><Alt>s'`, then reopen the window. Identical bindings, including reordered modifier aliases, are refused. These accelerators are window-local; desktop-wide shortcuts require your compositor/settings bindings. GlobalShortcuts portal integration is deferred.
 
-Keep a visible GUI/notification indicator while recording. `shruta status` is always authoritative if a notification expires or is suppressed by the desktop.
+Keep a visible GUI/notification indicator while recording. `shruta status` shows active state and warns when the worker status is stale; a live process alone is not proof that audio is arriving.
 
 Recording-start notifications request no expiry and use a replacement tag where the notification server supports it. The desktop can still suppress or dismiss them; keep the window visible when a persistent indicator is required.
 
@@ -270,8 +275,14 @@ Manual daily-use acceptance checklist:
 
 An optional short **live** capture diagnostic is `shruta doctor --test-recording`; it explicitly records three seconds and retains the test session. It is not run by default. Passing unit tests does not establish two-hour or Bluetooth reliability.
 
-Uninstall launchers with `rm ~/.local/bin/shruta ~/.local/share/applications/io.github.Praneel7015.Shrutadhara.desktop` after stopping active work. Remove any optional service separately. Recordings are never removed by installation or uninstallation.
+For a source installation, remove only its managed launcher and desktop entry after stopping active work. Native packages must be removed through pacman/APT; npm has a separate wrapper and user runtime. See the [channel-specific upgrade/removal guide](docs/DISTRIBUTION.md#upgrade-and-removal). Recordings and configuration are retained; remove any explicitly installed user service separately.
 
 ## License
 
 The application source is available under the [MIT License](LICENSE). See [NOTICE](NOTICE) for the excluded development fixture and dependency notes. Experimental GitHub package releases use the public project identity. npm and AUR publication remain separate steps; see the [distribution guide](docs/DISTRIBUTION.md).
+
+## Reliability patch development
+
+The 0.1.1 development version addresses the [EGM project review](docs/reviews/2026-11-17/README.md). See [implementation status](docs/reviews/2026-11-17/IMPLEMENTATION_STATUS.md) for completed regressions and remaining acceptance. New Q&A answers keep their own evidence snapshot. Accepted output caches and transcript JSON are verified before reuse; old unbaselined transcripts require reprocessing or explicit reviewed import before Q&A. Historical answer links are not retroactively rewritten.
+
+The window includes recent meetings, separate microphone/participants audio, and **Prepare audio locally (no AI upload)** under Recordings and local tools. `shruta open --artifact microphone` and `shruta open --artifact participants` select the individual tracks. Source GUI installations require GTK4.10 or newer; the window can resize/scroll for larger text.
