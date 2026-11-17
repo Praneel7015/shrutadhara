@@ -40,6 +40,9 @@
           "url": "https://www.freedesktop.org/software/pulseaudio/releases/pulseaudio-17.0.tar.xz",
           "sha256": "053794d6671a3e397d849e478a80b82a63cb9d8ca296bd35b73317bb5ceb87b5"
         }
+      ],
+      "post-install": [
+        "install -Dm644 LGPL /app/share/licenses/pulseaudio/LGPL"
       ]
     },
     {
@@ -61,7 +64,7 @@
         "--enable-indev=pulse",
         "--enable-libpulse",
         "--enable-demuxer=matroska,wav",
-        "--enable-muxer=matroska,wav,segment,pcm_s16le",
+        "--enable-muxer=matroska,wav,segment,pcm_s16le,null",
         "--enable-decoder=pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le",
         "--enable-encoder=pcm_s16le",
         "--enable-filter=aresample,aformat,anull,atrim,amix,alimiter,astats,abuffer,abuffersink"
@@ -72,13 +75,17 @@
           "url": "https://ffmpeg.org/releases/ffmpeg-7.1.3.tar.xz",
           "sha256": "f0bf043299db9e3caacb435a712fc541fbb07df613c4b893e8b77e67baf3adbe"
         }
+      ],
+      "post-install": [
+        "install -Dm644 COPYING.LGPLv2.1 /app/share/licenses/ffmpeg/COPYING.LGPLv2.1"
       ]
     },
     {
       "name": "python-dependencies",
       "buildsystem": "simple",
       "build-commands": [
-        "python3 -c \"import glob,zipfile; [zipfile.ZipFile(p).extractall('/app/share/shrutadhara') for p in glob.glob('*.whl')]\""
+        "python3 -c \"import glob,sys,zipfile; tag=f'-cp{sys.version_info.major}{sys.version_info.minor}-'; [zipfile.ZipFile(p).extractall('/app/share/shrutadhara') for p in glob.glob('*.whl') if '-cp' not in p or tag in p]\"",
+        "PYTHONPATH=/app/share/shrutadhara python3 -c \"import jsonschema, rpds\""
       ],
       "sources": [
         {

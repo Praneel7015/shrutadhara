@@ -264,6 +264,10 @@ def doctor(
     expected: str | None = None,
     test_recording: bool = False,
 ) -> dict:
+    from .sandbox import is_flatpak, require_native_ai
+
+    if probe_ai:
+        require_native_ai()
     if probe_ai and (sample is None or not expected or not expected.strip()):
         raise MeetingError(
             "AI probes require an approved --sample and its --expected spoken text", 2
@@ -355,6 +359,9 @@ def doctor(
             report["authentication"] = "not contacted; verified by explicit AI probe"
         except MeetingError as exc:
             report["agy_error"] = str(exc)
+    if is_flatpak():
+        report["hosted_processing_enabled"] = False
+        report["audio_capability"] = "unavailable in recording-only Flatpak; use a native installation for AI"
     if probe_ai:
         workspace = private_dir(
             runtime_dir() / "ai-probes" / str(__import__("time").time_ns())
