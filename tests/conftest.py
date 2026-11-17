@@ -1,8 +1,18 @@
+import os
+from pathlib import Path
+
 import pytest
 
 
 @pytest.fixture(autouse=True)
 def isolated_home(tmp_path, monkeypatch):
+    # Synthetic subprocesses must import the same checkout even when their
+    # private working directory differs and no editable install exists (Arch
+    # makepkg check / minimum-dependency jobs). Installed-wheel smoke checks
+    # run separately outside pytest with this test-only environment removed.
+    source = str(Path(__file__).resolve().parents[1])
+    previous = os.environ.get("PYTHONPATH")
+    monkeypatch.setenv("PYTHONPATH", source + (os.pathsep + previous if previous else ""))
     monkeypatch.setenv("SHRUTA_ROOT", str(tmp_path / "Meetings"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "runtime"))
