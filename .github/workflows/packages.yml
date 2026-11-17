@@ -38,6 +38,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: release-assets
@@ -53,6 +54,8 @@ jobs:
           test -f /usr/share/applications/io.github.Praneel7015.Shrutadhara.desktop
           sudo apt-get remove -y shrutadhara
           test ! -e /usr/bin/shruta
+      - name: Verify signed APT installation in disposable runner
+        run: SHRUTA_DISPOSABLE_APT_TEST=1 bash tools/test_apt_repository.sh dist/*.deb
   arch:
     needs: build
     runs-on: ubuntu-24.04

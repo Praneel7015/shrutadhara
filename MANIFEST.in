@@ -3,7 +3,8 @@ include npm/LICENSE npm/NOTICE
 recursive-include desktop *
 recursive-include npm *.json *.js *.md
 recursive-include tests *.py
-recursive-include tools *.py
+recursive-include tools *.py *.sh
 recursive-include docs *.md
 recursive-include packaging *.py *.in
 recursive-include docs/reviews *.json
+recursive-include packaging/apt *.asc KEY_FINGERPRINT

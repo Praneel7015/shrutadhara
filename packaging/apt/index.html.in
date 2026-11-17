@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Install Shrutadhara on Linux</title>
+<style>body{max-width:52rem;margin:3rem auto;padding:0 1rem;font:1.05rem/1.6 system-ui,sans-serif;color:#20242a;background:#fafafa}pre{padding:1rem;background:#eee;overflow:auto;border-radius:.4rem}code{font-size:.9rem}a{color:#235da8}h1,h2{line-height:1.25}</style>
+<h1>Shrutadhara <span lang="sa">(श्रुतधर)</span></h1>
+<p>Hear everything. Preserve knowledge. Remember what matters.</p>
+<p>A native Linux meeting recorder with optional AI transcription and notes. This is an <strong>experimental release</strong>. Local capture needs participant notice and permission. Reliable agy recognition, device transitions and long meetings still require validation.</p>
+<h2>Debian 13 / Ubuntu 24.04 or newer · amd64</h2>
+<p>APT package version: <strong>@VERSION@</strong>. Add this signed repository once; installation does not enable recording, services or AI uploads.</p>
+<pre><code>curl -fsSL https://praneel7015.github.io/shrutadhara/apt/shrutadhara-archive-keyring.gpg -o /tmp/shrutadhara-archive-keyring.gpg
+gpg --show-keys --with-fingerprint /tmp/shrutadhara-archive-keyring.gpg</code></pre>
+<p>Verify the full signing fingerprint before installing the key:</p>
+<pre><code>@FINGERPRINT@</code></pre>
+<pre><code>sudo install -m 644 /tmp/shrutadhara-archive-keyring.gpg /usr/share/keyrings/shrutadhara-archive-keyring.gpg
+echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/shrutadhara-archive-keyring.gpg] https://praneel7015.github.io/shrutadhara/apt experimental main' | sudo tee /etc/apt/sources.list.d/shrutadhara.list
+sudo apt update
+sudo apt install shrutadhara
+shruta doctor
+shruta show</code></pre>
+<p>Review APT's dependency transaction on customized audio systems. The package uses PipeWire Pulse compatibility and WirePlumber. Remove the app with <code>sudo apt remove shrutadhara</code>; recordings and configuration are retained.</p>
+<h2>Arch / CachyOS</h2>
+<p>Download the reviewed <code>.pkg.tar.zst</code> and <code>SHA256SUMS</code> from <a href="https://github.com/Praneel7015/shrutadhara/releases">GitHub Releases</a>, verify its checksum, then run <code>sudo pacman -U ./shrutadhara-VERSION-1-any.pkg.tar.zst</code>.</p>
+<p>AUR submission is prepared. New AUR account registration is currently paused; a prepared recipe does not make <code>yay -S shrutadhara</code> available.</p>
+<h2>npm launcher</h2>
+<pre><code>npm install --global shrutadhara@experimental --ignore-scripts
+shruta setup-native
+shruta doctor</code></pre>
+<p>The npm launcher still requires system Python, GTK ≥4.10, FFmpeg and PipeWire tools. Explicit setup installs the bundled native wheel. No browser runtime or separate transcription engine is bundled.</p>
+<p><a href="https://github.com/Praneel7015/shrutadhara">Source and documentation</a> · <a href="https://www.npmjs.com/package/shrutadhara">npm package</a> · <a href="https://github.com/Praneel7015/shrutadhara/blob/main/VALIDATION.md">Validation limits</a></p>
+</html>

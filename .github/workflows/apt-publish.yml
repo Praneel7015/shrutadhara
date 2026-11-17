@@ -1,0 +1,86 @@
+name: Publish signed APT repository
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing validated release tag (blank selects newest release)
+        required: false
+        default: ''
+  release:
+    types: [published]
+  schedule:
+    - cron: '17 6 * * 0'
+permissions:
+  contents: read
+concurrency:
+  group: signed-apt-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REQUESTED_TAG: ${{ inputs.tag }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          release_tag="${REQUESTED_TAG:-${EVENT_TAG:-}}"
+          if [[ -z "$release_tag" ]]; then release_tag="$(gh release list --limit 1 --json tagName --jq '.[0].tagName')"; fi
+          [[ "$release_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          echo "APT_RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
+          mkdir input
+          gh release download "$release_tag" --pattern 'shrutadhara_*_all.deb' --pattern SHA256SUMS --dir input
+      - name: Import dedicated archive key and build verified signed archive
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_SIGNING_FINGERPRINT: ${{ vars.APT_SIGNING_FINGERPRINT }}
+        run: |
+          python3 - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          home = Path(os.environ['RUNNER_TEMP']) / 'shrutadhara-apt-signing'
+          home.mkdir(mode=0o700)
+          key = os.environ.get('APT_SIGNING_KEY', '')
+          fingerprint = os.environ.get('APT_SIGNING_FINGERPRINT', '')
+          expected = Path('packaging/apt/KEY_FINGERPRINT').read_text().strip()
+          if not key or fingerprint != expected:
+              raise SystemExit('Configure the dedicated APT signing secret and matching public fingerprint variable')
+          result = subprocess.run(['gpg', '--homedir', str(home), '--batch', '--import'], input=key.encode(), capture_output=True)
+          if result.returncode:
+              raise SystemExit('Cannot import dedicated archive signing key')
+          packages = list(Path('input').glob('*.deb'))
+          if len(packages) != 1:
+              raise SystemExit('Expected exactly one released Debian package')
+          subprocess.run(['python3', 'tools/build_apt_repository.py', str(packages[0]), '--checksums', 'input/SHA256SUMS', '--output', 'site/apt', '--gpg-home', str(home), '--fingerprint', fingerprint], check=True)
+          Path('site/index.html').write_bytes(Path('site/apt/index.html').read_bytes())
+          Path('site/.nojekyll').touch()
+          PY
+      - name: Remove ephemeral private signing key
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, shutil, subprocess
+          from pathlib import Path
+          home = Path(os.environ['RUNNER_TEMP']) / 'shrutadhara-apt-signing'
+          if home.exists():
+              subprocess.run(['gpgconf', '--homedir', str(home), '--kill', 'gpg-agent'], capture_output=True)
+              shutil.rmtree(home)
+          PY
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
