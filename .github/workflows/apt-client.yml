@@ -1,0 +1,44 @@
+name: Published APT clients
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/apt-client.yml', 'packaging/apt/KEY_FINGERPRINT']
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['debian:13-slim', 'ubuntu:24.04']
+    container: ${{ matrix.image }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install test prerequisites in disposable container
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl gnupg git
+      - uses: actions/checkout@v4
+      - name: Install from the public signed repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 2 https://praneel7015.github.io/shrutadhara/apt/shrutadhara-archive-keyring.gpg -o /tmp/shrutadhara-keyring.gpg
+          actual_fingerprint="$(gpg --show-keys --with-colons /tmp/shrutadhara-keyring.gpg | awk -F: '$1=="fpr" {print $10; exit}')"
+          test "$actual_fingerprint" = "$(cat packaging/apt/KEY_FINGERPRINT)"
+          install -m 644 /tmp/shrutadhara-keyring.gpg /usr/share/keyrings/shrutadhara-archive-keyring.gpg
+          echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/shrutadhara-archive-keyring.gpg] https://praneel7015.github.io/shrutadhara/apt experimental main' > /etc/apt/sources.list.d/shrutadhara.list
+          apt-get update
+          apt-cache policy shrutadhara
+          apt-get install -y --no-install-recommends shrutadhara
+          cd /tmp
+          /usr/bin/shruta --version
+          /usr/bin/shruta --help
+          /usr/bin/python3 -c 'import gi, jsonschema, shrutadhara; gi.require_version("Gtk", "4.0"); from gi.repository import Gtk; assert (Gtk.get_major_version(), Gtk.get_minor_version()) >= (4, 10)'
+          test -f /usr/share/applications/io.github.Praneel7015.Shrutadhara.desktop
+          apt-get remove -y shrutadhara
+          test ! -e /usr/bin/shruta

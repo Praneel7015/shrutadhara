@@ -8,6 +8,8 @@ This is separate from Debian/Ubuntu's official archives. Initial support is Debi
 
 ## Install
 
+`sudo apt install shrutadhara` works after adding this source and key and running `sudo apt update`. It does not work on an unconfigured Debian/Ubuntu installation: Shrutadhara is not in their default archives. The repository setup below is a one-time step on each machine; subsequent installs and upgrades use normal APT commands.
+
 Download the public key and verify its complete fingerprint:
 
 ```bash
