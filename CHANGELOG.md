@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.1.1 — development, experimental
+## Unreleased
+
+- Add an experimental x86_64 Flatpak for recording and local preparation, with explicit AI/background-command restrictions and window lifetime protection.
+- Build and test the installed Flatpak runtime with pinned audio/Python dependencies and synthetic codec checks.
+- Publish a signed experimental APT archive with integrity verification, expiry refresh and disposable installation tests.
+- Document currently available npm/native/APT channels and the AUR registration blocker.
+
+## 0.1.1 — experimental
 
 - Bind capture children and hosted provider groups to parent lifetime; terminate owned descendants on cancellation and hard parent death.
 - Guarantee teardown despite metadata failure; retain failed module ownership and serialize repair/export/preparation.

@@ -2,7 +2,7 @@
 
 The initial Flatpak targets x86_64 desktops with Flatpak, Wayland or X11, and a working PulseAudio-compatible audio server (including PipeWire). It supports recording and local audio preparation. Transcription, notes, Q&amp;A, automatic Teams monitoring and CLI global shortcut installation require a native installation. No host-command bridge or hosted AI network permission is granted.
 
-This is a development bundle, not a published Flathub application. A successful bundle build does not establish live Teams routing, speech recognition accuracy or long-meeting reliability. ARM builds and Flathub submission remain future work.
+An installable development bundle passed the [build and installed-runtime checks](https://github.com/Praneel7015/shrutadhara/actions/runs/44106976357) from commit `95f5ac6`. This is a development bundle, not a published Flathub application. A successful bundle build does not establish live Teams routing, speech recognition accuracy or long-meeting reliability. ARM builds and Flathub submission remain future work.
 
 ## Build
 
@@ -23,7 +23,14 @@ The `Experimental Flatpak` GitHub Actions workflow builds the same recipe, uploa
 
 ## Install and record
 
-After downloading and extracting the workflow artifact, or building locally:
+Download the tested workflow artifact (requires GitHub CLI authentication), or build locally:
+
+```bash
+gh run download 44106976357 --repo Praneel7015/shrutadhara --name shrutadhara-experimental-x86_64-x86_64.flatpak --dir ./shrutadhara-flatpak
+cd shrutadhara-flatpak
+```
+
+Workflow artifacts expire; if this run is unavailable, build a reviewed source checkout or use a newer passing run. This is not yet an automatically updated Flatpak repository. Then install:
 
 ```bash
 flatpak install --user ./shrutadhara-experimental-x86_64.flatpak

@@ -66,3 +66,14 @@ A packed npm tarball was installed into an isolated temporary HOME/XDG prefix. D
 The EGM review and parallel implementation addressed process lifetime, shutdown, call-state reconciliation, output evidence, routing and installation issues. See [implementation status](docs/reviews/2026-11-17/IMPLEMENTATION_STATUS.md) for commits, regressions, compatibility behavior and remaining acceptance. Current local default suite:210 passed plus two subtests; Python3.11/jsonschema4.10.3:209 passed, one GTK availability skip, plus two subtests. Tests include real synthetic FFmpeg and local fake process groups, never live recording or hosted AI.
 
 Package installation CI for the earlier main baseline passed in [run43935549226](https://github.com/Praneel7015/shrutadhara/actions/runs/43935549226). This is installation evidence for that commit, not proof of live capture, GUI acceptance or the current patch's CI outcome.
+
+
+## 2026-11-17 — signed APT and experimental Flatpak
+
+The public signed APT archive at https://praneel7015.github.io/shrutadhara/apt/ was deployed and independently fetched: gpgv verified InRelease against the checked-in public fingerprint, and the indexed package SHA256 and bytes matched the immutable v0.1.1 release `.deb`. Disposable Ubuntu CI installed the package from a signed HTTP repository and removed it. No APT sources or trust keys were added to the CachyOS workstation.
+
+Flatpak development commit `95f5ac6` passed [workflow 44106976357](https://github.com/Praneel7015/shrutadhara/actions/runs/44106976357). The job built a standalone x86_64 bundle, installed it, and ran checks inside the GNOME 51 runtime: GTK/Python/JSON validation imports, pactl availability, FFmpeg Pulse input/filter availability, PCM Matroska segmentation, audio sound validation and combined mixing. Detached CLI recording and hosted processing were rejected as intended. Tests used synthetic tones, without opening a microphone or invoking hosted AI. The compressed bundle is about 2 MB; the shared GNOME runtime is a separate substantial dependency.
+
+Local verification: 234 tests plus 2 subtests passed, Ruff passed, AppStream metadata validation passed, and source/wheel distribution audits excluded audio/private fixtures. The Flatpak scope/lifetime policy has unit coverage. Actual GUI closure, live Teams/microphone capture, Bluetooth/USB switching, portals, cross-distribution acceptance and two-hour recording have not yet been validated in this Flatpak. It is not a Flathub listing or a daily-use reliability claim. Native agy recognition limitations remain unchanged.
+
+The tested bundle was downloaded to `~/Downloads/shrutadhara-flatpak/shrutadhara-experimental-x86_64.flatpak`; SHA256 `d9fa2c1b077cb6a2a738e5c00dffc39d674e91a26f2b0ba749a5351d1ecb2e56`. No new recording or hosted upload occurred during these packaging checks.
