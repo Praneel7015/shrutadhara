@@ -35,6 +35,19 @@ def output_state(path: Path | None, data: dict | None) -> dict:
     }
 
 
+def recent_sessions(limit: int = 12) -> list[tuple[Path, str]]:
+    items = []
+    for path in sessions.list_sessions():
+        try:
+            data = read_json(path / "session.json")
+        except MeetingError:
+            continue
+        items.append((path, f"{path.name[:17]} · {data.get('title', 'Meeting')}"))
+        if len(items) >= limit:
+            break
+    return items
+
+
 def launch_processing(path: Path, prepare_only: bool = False):
     command = [
         sys.executable,
@@ -86,6 +99,9 @@ def launch() -> int:
             self.mic_names, self.output_names = [None], [None]
             self.process_requested = False
             self.processing_pid = None
+            self.history_paths = []
+            self.updating_history = False
+            self.preparing_local = False
             box = Gtk.Box(
                 orientation=Gtk.Orientation.VERTICAL,
                 spacing=12,
@@ -146,11 +162,15 @@ def launch() -> int:
             box.append(row)
             self.settings = Gtk.Expander(label="Devices and diagnostics")
             settings_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-            settings_box.append(Gtk.Label(label="Microphone", xalign=0))
+            mic_label = Gtk.Label(label="_Microphone", use_underline=True, xalign=0)
+            settings_box.append(mic_label)
             self.mic = Gtk.DropDown.new_from_strings(["Automatic (Teams / default)"])
+            mic_label.set_mnemonic_widget(self.mic)
             settings_box.append(self.mic)
-            settings_box.append(Gtk.Label(label="Listen through", xalign=0))
+            output_label = Gtk.Label(label="_Listen through", use_underline=True, xalign=0)
+            settings_box.append(output_label)
             self.output = Gtk.DropDown.new_from_strings(["Automatic (desktop default)"])
+            output_label.set_mnemonic_widget(self.output)
             settings_box.append(self.output)
             self.allow_muted = Gtk.CheckButton(
                 label="Allow recording with system-muted microphone"
@@ -168,6 +188,30 @@ def launch() -> int:
             settings_box.append(diagnostics)
             self.settings.set_child(settings_box)
             box.append(self.settings)
+            recordings = Gtk.Expander(label="Recordings and local tools")
+            recordings_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+            history_label = Gtk.Label(label="_Recent meeting", use_underline=True, xalign=0)
+            recordings_box.append(history_label)
+            self.history = Gtk.DropDown.new_from_strings(["No recordings yet"])
+            history_label.set_mnemonic_widget(self.history)
+            self.history.connect("notify::selected", self.select_history)
+            recordings_box.append(self.history)
+            history_refresh = Gtk.Button(label="Refresh meetings")
+            history_refresh.connect("clicked", lambda *_: self.background(recent_sessions, self.set_history))
+            recordings_box.append(history_refresh)
+            self.prepare_button = Gtk.Button(label="Prepare audio locally (no AI upload)")
+            self.prepare_button.connect("clicked", self.prepare_clicked)
+            recordings_box.append(self.prepare_button)
+            audio_row = Gtk.Box(spacing=6, homogeneous=True)
+            self.audio_buttons = {}
+            for kind, label in [("microphone", "Microphone audio"), ("participants", "Participants audio")]:
+                button = Gtk.Button(label=label)
+                button.connect("clicked", lambda _, name=kind: self.open_artifact(name))
+                audio_row.append(button)
+                self.audio_buttons[kind] = button
+            recordings_box.append(audio_row)
+            recordings.set_child(recordings_box)
+            box.append(recordings)
             self.message = Gtk.Label(xalign=0, wrap=True, selectable=True)
             box.append(self.message)
             self.location = Gtk.Label(xalign=0, wrap=True, selectable=True)
@@ -175,9 +219,7 @@ def launch() -> int:
             box.append(self.location)
             self.timer = GLib.timeout_add_seconds(1, self.tick)
             self.connect("destroy", lambda *_: GLib.source_remove(self.timer))
-            paths = sessions.list_sessions()
-            if paths:
-                self.path = paths[0]
+            self.set_history(recent_sessions())
             self.tick()
             self.background(audio.inventory, self.set_devices)
 
@@ -244,6 +286,37 @@ def launch() -> int:
                 text += " A microphone is system-muted."
             self.message.set_text(text)
 
+        def set_history(self, items):
+            self.updating_history = True
+            try:
+                self.history_paths = [path for path, _ in items]
+                self.history.set_model(Gtk.StringList.new([label for _, label in items] or ["No recordings yet"]))
+                if not self.path and self.history_paths:
+                    self.path = self.history_paths[0]
+                index = self.history_paths.index(self.path) if self.path in self.history_paths else 0
+                self.history.set_selected(index)
+            finally:
+                self.updating_history = False
+
+        def select_history(self, *_):
+            if self.updating_history or self.busy or self.recording in {"starting", "recording", "stopping"} or self.process_requested:
+                return
+            index = self.history.get_selected()
+            if index < len(self.history_paths):
+                self.path = self.history_paths[index]
+                self.tick()
+
+        def prepare_clicked(self, *_):
+            if not self.path:
+                return
+            path = self.path
+            job = launch_processing(path, prepare_only=True)
+            self.processing_pid = job.pid
+            self.process_requested = True
+            self.preparing_local = True
+            self.message.set_text("Local audio preparation requested. No AI upload is performed.")
+            self.tick()
+
         def confirm(self, title, body, accept, callback):
             dialog = Gtk.AlertDialog(
                 message=title,
@@ -303,6 +376,7 @@ def launch() -> int:
                 job = launch_processing(path)
                 self.processing_pid = job.pid
                 self.process_requested = True
+                self.preparing_local = False
                 self.message.set_text(
                     "Processing requested. Capability checks run before any meeting upload; use the CLI doctor probe if blocked."
                 )
@@ -348,22 +422,16 @@ def launch() -> int:
                     )
                 )
                 if self.process_requested and data:
-                    if processing:
-                        self.process_requested = False
-                    elif data["transcription"] in {"blocked", "failed", "partial"}:
+                    if self.processing_pid and recorder.process_identity(self.processing_pid) is None:
                         self.process_requested = False
                         self.message.set_text(
-                            data["errors"][-1]["message"]
-                            if data["errors"]
-                            else "Processing is blocked; use shruta doctor --probe-ai"
-                        )
-                    elif (
-                        self.processing_pid
-                        and recorder.process_identity(self.processing_pid) is None
-                    ):
-                        self.process_requested = False
-                        self.message.set_text(
-                            "Processing finished or stopped before transcription. Inspect logs/processing.log in the session folder."
+                            "Local preparation finished. Check the session folder and processing log."
+                            if self.preparing_local
+                            else (
+                                data["errors"][-1]["message"]
+                                if data["transcription"] in {"blocked", "failed", "partial"} and data["errors"]
+                                else "Processing finished. Check the session outputs and processing log."
+                            )
                         )
                 flags = ui_state(
                     self.recording,
@@ -374,6 +442,10 @@ def launch() -> int:
                 self.record_button.set_label(flags["record_label"])
                 self.record_button.set_sensitive(flags["record_enabled"])
                 self.process_button.set_sensitive(flags["process_enabled"])
+                self.prepare_button.set_sensitive(flags["process_enabled"])
+                self.history.set_sensitive(flags["process_enabled"])
+                for name, button in self.audio_buttons.items():
+                    button.set_sensitive(bool(self.path and (self.path / f"audio/{name}.wav").exists()))
                 self.settings.set_sensitive(flags["settings_enabled"])
                 if self.recording == "recording":
                     seconds = int(state.get("elapsed_seconds", 0))
@@ -397,12 +469,18 @@ def launch() -> int:
                         if health.get("microphone_muted")
                         else (
                             "connected"
-                            if health.get("microphone_present")
+                            if health.get("microphone_present") and health.get("mic_route_connected")
                             else "checking / unavailable"
                         )
                     )
-                    remote = f"{health.get('teams_streams', 0)} Teams streams"
+                    remote = (
+                        "Teams selection needed"
+                        if health.get("teams_ambiguous")
+                        else f"{health.get('teams_streams', 0)} Teams streams"
+                    )
                     self.health_label.set_text(
+                        "Recording status is stale; audio health is unknown. Check status or stop recording."
+                        if state.get("health_stale") else
                         f"Microphone: {mic} · Participants: {remote} · Gaps: {state.get('gaps', 0)}"
                     )
                 elif data:

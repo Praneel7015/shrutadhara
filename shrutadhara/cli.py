@@ -156,7 +156,7 @@ def parser() -> argparse.ArgumentParser:
         if name == "open":
             command.add_argument(
                 "--artifact",
-                choices=["folder", "notes", "transcript", "audio"],
+                choices=["folder", "notes", "transcript", "audio", "microphone", "participants"],
                 default="folder",
             )
     listing = sub.add_parser(
@@ -406,6 +406,8 @@ def artifact(path: Path, kind: str) -> Path:
             "notes": "notes/detailed-notes.md",
             "transcript": "transcript/full-transcript.md",
             "audio": "audio/combined.wav",
+            "microphone": "audio/microphone.wav",
+            "participants": "audio/participants.wav",
             "folder": "",
         }[kind]
     )

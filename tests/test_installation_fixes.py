@@ -70,3 +70,33 @@ def test_output_controls_recover_after_first_session(recorded):
     (recorded / 'transcript/full-transcript.md').write_text('Synthetic')
     state = gui.output_state(recorded, {'notes': 'complete'})
     assert all(state.values())
+
+
+def test_recent_sessions_skip_corrupt_metadata_and_honor_limit(monkeypatch, recorded, tmp_path):
+    bad = tmp_path / 'bad-session'
+    bad.mkdir()
+    (bad / 'session.json').write_text('{bad')
+    monkeypatch.setattr(gui.sessions, 'list_sessions', lambda: [bad, recorded])
+    items = gui.recent_sessions(limit=1)
+    assert len(items) == 1
+    assert items[0][0] == recorded
+    assert 'Design review' in items[0][1]
+
+
+def test_local_prepare_launches_cli_without_hosted_processing(recorded, monkeypatch):
+    calls = []
+    monkeypatch.setattr(gui.subprocess, 'Popen', lambda *a, **kw: calls.append((a, kw)))
+    gui.launch_processing(recorded, prepare_only=True)
+    command = calls[0][0][0]
+    assert '--prepare-only' in command
+    assert '--session' in command
+    assert calls[0][1]['start_new_session']
+
+
+def test_separate_audio_tracks_can_be_selected_without_ai(recorded):
+    from shrutadhara import cli
+    for name in ['microphone', 'participants']:
+        path = recorded / f'audio/{name}.wav'
+        path.write_bytes(b'synthetic not played')
+        assert cli.artifact(recorded, name) == path
+        assert cli.parser().parse_args(['open', '--artifact', name]).artifact == name
