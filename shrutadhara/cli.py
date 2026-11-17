@@ -510,7 +510,10 @@ def dispatch(args):
                     f"Transcript: {latest['transcription']} · Notes: {latest['notes']}"
                 )
                 if latest.get("health"):
-                    print("Audio: " + json.dumps(latest["health"]))
+                    if latest.get("health_stale"):
+                        print("Audio health unknown: recorder status is stale")
+                    else:
+                        print("Audio: " + json.dumps(latest["health"]))
     elif command == "stop":
         if not recorder.active():
             print("No active recording")

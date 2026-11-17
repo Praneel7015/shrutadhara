@@ -100,3 +100,21 @@ def test_separate_audio_tracks_can_be_selected_without_ai(recorded):
         path.write_bytes(b'synthetic not played')
         assert cli.artifact(recorded, name) == path
         assert cli.parser().parse_args(['open', '--artifact', name]).artifact == name
+
+
+def test_history_refresh_keeps_target_even_outside_recent_window(tmp_path):
+    selected = tmp_path / 'older-selected'
+    latest = tmp_path / 'latest'
+    items, index = gui.history_selection([(latest, 'Latest')], selected)
+    assert items[index][0] == selected
+    assert latest in [path for path, _ in items]
+    assert items[index][0] != latest
+
+
+def test_active_session_selection_synchronizes_existing_history(tmp_path):
+    previous, active = tmp_path / 'previous', tmp_path / 'active'
+    items, index = gui.history_selection([(previous, 'Previous'), (active, 'Active')], active)
+    assert index == 1
+    assert items[index][0] == active
+    empty, index = gui.history_selection([], None)
+    assert empty == [] and index == 0

@@ -48,6 +48,17 @@ def recent_sessions(limit: int = 12) -> list[tuple[Path, str]]:
     return items
 
 
+def history_selection(items: list[tuple[Path, str]], current: Path | None):
+    """Keep the selected target represented even when it falls outside history."""
+    items = list(items)
+    paths = [path for path, _ in items]
+    if current is not None and current not in paths:
+        items.insert(0, (current, f"Selected meeting · {current.name}"))
+        paths.insert(0, current)
+    index = paths.index(current) if current in paths else 0
+    return items, index
+
+
 def launch_processing(path: Path, prepare_only: bool = False):
     command = [
         sys.executable,
@@ -100,6 +111,7 @@ def launch() -> int:
             self.process_requested = False
             self.processing_pid = None
             self.history_paths = []
+            self.history_items = []
             self.updating_history = False
             self.preparing_local = False
             box = Gtk.Box(
@@ -289,11 +301,12 @@ def launch() -> int:
         def set_history(self, items):
             self.updating_history = True
             try:
+                items, index = history_selection(items, self.path)
+                self.history_items = items
                 self.history_paths = [path for path, _ in items]
                 self.history.set_model(Gtk.StringList.new([label for _, label in items] or ["No recordings yet"]))
                 if not self.path and self.history_paths:
                     self.path = self.history_paths[0]
-                index = self.history_paths.index(self.path) if self.path in self.history_paths else 0
                 self.history.set_selected(index)
             finally:
                 self.updating_history = False
@@ -413,6 +426,11 @@ def launch() -> int:
                 state = recorder.status()
                 if state.get("active"):
                     self.path = Path(state["session"])
+                if self.path and (
+                    self.path not in self.history_paths
+                    or self.history.get_selected() != self.history_paths.index(self.path)
+                ):
+                    self.set_history(self.history_items)
                 data = read_json(self.path / "session.json") if self.path else None
                 self.recording = data["recording"] if data else None
                 processing = bool(
