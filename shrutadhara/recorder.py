@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from . import audio, sessions
+from .child import guarded_command, process_identity
 from .core import (
     MeetingError,
     atomic_json,
@@ -23,13 +24,6 @@ from .core import (
     read_json,
     runtime_dir,
 )
-
-
-def process_identity(pid: int) -> str | None:
-    try:
-        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
-    except (OSError, IndexError):
-        return None
 
 
 def active() -> dict | None:
@@ -91,6 +85,14 @@ def recover(path: Path | None = None) -> dict:
         paths = [path] if path else sessions.list_sessions()
         recovered = []
         for p in paths:
+            capture = p / "audio/capture-process.json"
+            if capture.exists():
+                writer = read_json(capture)
+                if (writer.get("identity") and
+                    process_identity(writer.get("pid", 0)) == writer["identity"]):
+                    raise MeetingError(
+                        "Owned capture process is still alive; wait for it to stop before recovery", 4
+                    )
             data = read_json(p / "session.json")
             journal = p / "audio/routing.json"
             if journal.exists():
@@ -297,7 +299,11 @@ class Supervisor:
         )
         sessions.update(self.path, epochs=self.epochs)
         self.proc = subprocess.Popen(
-            audio.recording_command(self.routing.remote, self.routing.local, directory),
+            guarded_command(
+                audio.recording_command(self.routing.remote, self.routing.local, directory),
+                death_signal=signal.SIGINT,
+                identity_file=self.path / "audio/capture-process.json",
+            ),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=self.log,
@@ -306,27 +312,107 @@ class Supervisor:
         self.selector.register(self.proc.stdout, selectors.EVENT_READ, "progress")
         self.progress_at = time.monotonic()
 
+    def report_error(self, category: str, message: str):
+        """Diagnostics must never prevent owned-process or routing teardown."""
+        try:
+            sessions.error(self.path, category, message)
+        except (MeetingError, OSError, ValueError, KeyError):
+            self.fatal = True
+
     def halt_capture(self):
-        if self.proc:
+        proc, self.proc = self.proc, None
+        if not proc:
+            return
+        forced = False
+        try:
             try:
-                self.selector.unregister(self.proc.stdout)
+                self.selector.unregister(proc.stdout)
             except (KeyError, ValueError):
                 pass
-            if self.proc.poll() is None:
-                self.proc.send_signal(signal.SIGINT)
+            if proc.poll() is None:
+                proc.send_signal(signal.SIGINT)
                 try:
-                    self.proc.wait(timeout=15)
+                    proc.wait(timeout=15)
                 except subprocess.TimeoutExpired:
-                    self.proc.kill()
-                    self.proc.wait()
-                    sessions.error(
-                        self.path,
-                        "recording",
-                        "FFmpeg forced to stop; inspect final archive",
-                    )
+                    proc.kill()
+                    proc.wait(timeout=5)
+                    forced = True
+        finally:
+            # A close failure or metadata error must not leave an owned writer alive.
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+            proc.stdout.close()
+        if forced:
+            self.fatal = True
+            self.report_error("recording", "FFmpeg forced to stop; inspect final archive")
+
+    def finalize(self, sockpath: Path):
+        """Release capture resources independently of metadata/storage health."""
+        duration = time.monotonic() - self.started
+        metadata_ok = True
+        for track, begin in self.missing_since.items():
+            self.gaps.append({"start": begin, "end": duration, "track": track,
+                              "reason": "Audio unavailable at stop"})
+        try:
+            try:
+                state = read_json(self.path / "session.json")["recording"]
+                if state == "starting":
+                    sessions.update(self.path, recording="failed")
+                elif state == "recording":
+                    sessions.update(self.path, recording="stopping")
+                sessions.update(self.path, ended_at=now(), duration_seconds=duration, gaps=self.gaps)
+            except (MeetingError, OSError, ValueError, KeyError):
+                self.fatal = True
+                metadata_ok = False
+            finally:
+                try:
+                    self.halt_capture()
+                except (MeetingError, OSError, ValueError, subprocess.SubprocessError):
                     self.fatal = True
-            self.proc.stdout.close()
-            self.proc = None
+                    self.report_error("recording", "Capture teardown failed; inspect recovery")
+                finally:
+                    try:
+                        if self.routing:
+                            self.routing.cleanup()
+                    except (MeetingError, OSError, ValueError, KeyError):
+                        self.fatal = True
+                        self.report_error("routing", "Routing cleanup incomplete; run shruta recover")
+                    finally:
+                        try:
+                            if self.control:
+                                self.control.close()
+                        finally:
+                            try:
+                                sockpath.unlink(missing_ok=True)
+                            except OSError:
+                                self.fatal = True
+            if metadata_ok:
+                try:
+                    manifest, errors = audio.archive_manifest(self.path, self.epochs)
+                    if not manifest:
+                        raise MeetingError("No valid audio archive segments", 5)
+                    artifacts = audio.exports(self.path, manifest, duration)
+                    sessions.update(self.path, artifacts=artifacts)
+                    if errors:
+                        self.fatal = True
+                except (MeetingError, OSError, ValueError, KeyError):
+                    self.fatal = True
+                    self.report_error("finalization", "Export incomplete; originals retained for recovery")
+                try:
+                    if read_json(self.path / "session.json")["recording"] == "stopping":
+                        sessions.update(self.path, recording="interrupted" if self.fatal else "recorded")
+                except (MeetingError, OSError, ValueError, KeyError):
+                    self.fatal = True
+        finally:
+            try:
+                if self.log:
+                    self.log.close()
+            finally:
+                self.selector.close()
+            notify("Recording stopped" if not self.fatal else
+                   "Recording interrupted — inspect session and recovery", False,
+                   "shrutadhara-capture")
 
     def serve_control(self):
         conn, _ = self.control.accept()
@@ -550,73 +636,12 @@ class Supervisor:
                         next_check = time.monotonic() + 2
             except BaseException as exc:
                 self.fatal = True
-                sessions.error(
-                    self.path,
-                    "recording",
-                    str(exc)
-                    if isinstance(exc, MeetingError)
+                self.report_error(
+                    "recording", str(exc) if isinstance(exc, MeetingError)
                     else "Unexpected supervisor failure",
                 )
             finally:
-                duration = time.monotonic() - self.started
-                for track, begin in self.missing_since.items():
-                    self.gaps.append(
-                        {
-                            "start": begin,
-                            "end": duration,
-                            "track": track,
-                            "reason": "Audio unavailable at stop",
-                        }
-                    )
-                state = read_json(self.path / "session.json")["recording"]
-                if state == "starting":
-                    sessions.update(self.path, recording="failed")
-                elif state == "recording":
-                    sessions.update(self.path, recording="stopping")
-                # Saved before shutdown/export so a crash during finalization has a bounded timeline.
-                sessions.update(
-                    self.path, ended_at=now(), duration_seconds=duration, gaps=self.gaps
-                )
-                self.halt_capture()
-                if self.routing:
-                    try:
-                        self.routing.cleanup()
-                    except (MeetingError, OSError, ValueError, KeyError):
-                        sessions.error(
-                            self.path,
-                            "routing",
-                            "Routing cleanup incomplete; run shruta recover",
-                        )
-                self.control.close() if self.control else None
-                sockpath.unlink(missing_ok=True)
-                sessions.update(
-                    self.path, ended_at=now(), duration_seconds=duration, gaps=self.gaps
-                )
-                try:
-                    manifest, errors = audio.archive_manifest(self.path, self.epochs)
-                    if not manifest:
-                        raise MeetingError("No valid audio archive segments", 5)
-                    artifacts = audio.exports(self.path, manifest, duration)
-                    sessions.update(self.path, artifacts=artifacts)
-                    if errors:
-                        self.fatal = True
-                except MeetingError as exc:
-                    self.fatal = True
-                    sessions.error(self.path, "finalization", str(exc))
-                state = read_json(self.path / "session.json")["recording"]
-                if state == "stopping":
-                    sessions.update(
-                        self.path, recording="interrupted" if self.fatal else "recorded"
-                    )
-                self.log.close()
-                self.selector.close()
-                notify(
-                    "Recording stopped"
-                    if not self.fatal
-                    else "Recording interrupted — inspect session and recovery",
-                    False,
-                    "shrutadhara-capture",
-                )
+                self.finalize(sockpath)
         if self.cfg["auto_process"] and self.cfg["hosted_consent"] and not self.fatal:
             from .processing import process
 

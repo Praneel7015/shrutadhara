@@ -140,12 +140,11 @@ class Routing:
             raise
 
     def unload(self, label: str):
-        index = self.modules.pop(label, None)
+        index = self.modules.get(label)
         if index:
-            try:
-                pulse("unload-module", index)
-            except MeetingError:
-                pass
+            # A failure must preserve ownership and prevent a duplicate replacement.
+            pulse("unload-module", index)
+            self.modules.pop(label, None)
         self.save()
 
     def connect_mic(self, source: str):
@@ -197,16 +196,20 @@ class Routing:
             inv = inventory()
         except MeetingError:
             return  # Keep journal for explicit recovery.
-        restore_routes(self.journal, inv)
+        restore_routes(self.journal, inv, ownership={
+            "modules": self.modules, "moved": self.moved,
+            "remote": self.remote, "local": self.local,
+        })
 
 
-def restore_routes(journal: Path, inv: dict | None = None):
+def restore_routes(journal: Path, inv: dict | None = None, ownership: dict | None = None):
     """Restore only streams whose identity and current session target still match."""
-    if not journal.exists():
+    if ownership is None and not journal.exists():
         return
     from .core import read_json
 
-    data = read_json(journal)
+    # Live ownership may be newer than disk when a journal write failed.
+    data = ownership if ownership is not None else read_json(journal)
     inv = inv or inventory()
     sinks = {s["index"]: s["name"] for s in inv["sinks"]}
     names = set(sinks.values())
