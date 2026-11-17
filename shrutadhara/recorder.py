@@ -61,7 +61,7 @@ def status() -> dict:
     }
 
 
-def request(command: str) -> dict:
+def request(command: str, expected_session: str | Path | None = None) -> dict:
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         client.settimeout(5)
         try:
@@ -71,8 +71,14 @@ def request(command: str) -> dict:
             )
             if struct.unpack("3i", credentials)[1] != os.getuid():
                 raise MeetingError("Recorder socket belongs to another user", 4)
-            client.sendall((json.dumps({"command": command}) + "\n").encode())
-            return json.loads(client.recv(8192))
+            payload = {"command": command}
+            if expected_session is not None:
+                payload["expected_session"] = str(Path(expected_session).resolve())
+            client.sendall((json.dumps(payload) + "\n").encode())
+            result = json.loads(client.recv(8192))
+            if result.get("error"):
+                raise MeetingError(result["error"], 4)
+            return result
         except (OSError, ValueError) as exc:
             raise MeetingError(
                 "Recorder control unavailable; inspect status and run shruta recover",
@@ -217,17 +223,19 @@ def start(title: str, options: dict, foreground: bool = False) -> Path:
         )
 
 
-def stop(wait: bool = True) -> dict:
+def stop(wait: bool = True, expected_session: str | Path | None = None) -> dict:
     d = active()
     if not d:
         raise MeetingError("No active recording; use shruta recover after a crash", 4)
+    if expected_session is not None and Path(d["session"]).resolve() != Path(expected_session).resolve():
+        raise MeetingError("Active recording is not the expected owned session", 4)
     metadata = read_json(Path(d["session"]) / "session.json")
     # The control socket closes during export/finalization. Repeated Stop should
     # attach to the existing finalization, not fail or signal a different process.
     result = (
         {"accepted": True, "session": d["session"], "recording": "stopping"}
         if metadata["recording"] == "stopping"
-        else request("stop")
+        else request("stop", expected_session=expected_session)
     )
     if wait:
         path = Path(d["session"])
@@ -429,6 +437,10 @@ class Supervisor:
             try:
                 message = json.loads(conn.recv(4096))
                 if message.get("command") == "stop":
+                    expected = message.get("expected_session")
+                    if expected is not None and (not isinstance(expected, str) or Path(expected).resolve() != self.path.resolve()):
+                        conn.sendall(b'{"error":"Active recording is not the expected owned session"}\n')
+                        return
                     self.running = False
                 elif message.get("command") != "status":
                     conn.sendall(b'{"error":"Unknown command"}\n')

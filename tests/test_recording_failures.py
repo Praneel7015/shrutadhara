@@ -147,3 +147,37 @@ def test_cleanup_uses_live_ownership_when_journal_write_failed(inv, tmp_path, mo
     with pytest.raises(OSError):
         route.cleanup()
     assert ("unload-module", "123") in calls
+
+
+def test_stop_expected_session_refuses_replacement_before_control(monkeypatch):
+    path = sessions.create("Replacement session")
+    monkeypatch.setattr(recorder, "active", lambda: {"session": str(path)})
+    monkeypatch.setattr(recorder, "request", lambda *_a, **_kw: pytest.fail("must not send stop"))
+    with pytest.raises(MeetingError, match="expected owned session"):
+        recorder.stop(wait=False, expected_session=path.parent / "different")
+
+
+def test_control_stop_checks_expected_session_at_dispatch(tmp_path):
+    import socket
+    import threading
+
+    path = sessions.create("Control ownership")
+    supervisor = recorder.Supervisor(path)
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock = tmp_path / "control.sock"
+    server.bind(str(sock))
+    server.listen()
+    supervisor.control = server
+    worker = threading.Thread(target=supervisor.serve_control)
+    worker.start()
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.connect(str(sock))
+            client.sendall(__import__('json').dumps({"command": "stop", "expected_session": str(path.parent / "old-session")}).encode())
+            response = __import__('json').loads(client.recv(8192))
+        worker.join(timeout=5)
+        assert "error" in response
+        assert supervisor.running
+    finally:
+        server.close()
+        supervisor.selector.close()
