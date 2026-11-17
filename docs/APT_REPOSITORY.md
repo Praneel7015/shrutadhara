@@ -56,6 +56,6 @@ The dedicated private GnuPG home is kept outside the checkout under `~/.local/sh
 
 ## Validation
 
-Unit tests verify package identity, release checksums, index hashes, signing, independent gpgv verification and signature rejection after metadata tampering. Real APT tests use disposable Ubuntu runners: signed HTTP repository update, package fetch, installation, help/version and removal. `tools/test_apt_repository.sh` refuses to run unless explicitly marked as a disposable test. It must never be run against a user's ordinary workstation as a diagnostics command.
+Unit tests verify package identity, release checksums, index hashes, signing, independent gpgv verification and signature rejection after metadata tampering. Real APT tests use disposable Ubuntu runners: signed HTTP repository update, package fetch, installation, help/version and removal. The [Published APT clients workflow](https://github.com/Praneel7015/shrutadhara/actions/runs/44110388557) also passed on clean Debian 13 and Ubuntu 24.04 containers using the actual public HTTPS repository: pinned signing-key fingerprint verification, APT update/install, Python/GTK imports, desktop-entry presence and package removal. `tools/test_apt_repository.sh` refuses to run unless explicitly marked as a disposable test. It must never be run against a user's ordinary workstation as a diagnostics command.
 
 No APT source or trusted key is added to the CachyOS development workstation.

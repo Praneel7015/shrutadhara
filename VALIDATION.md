@@ -77,3 +77,10 @@ Flatpak development commit `95f5ac6` passed [workflow 44106976357](https://githu
 Local verification: 234 tests plus 2 subtests passed, Ruff passed, AppStream metadata validation passed, and source/wheel distribution audits excluded audio/private fixtures. The Flatpak scope/lifetime policy has unit coverage. Actual GUI closure, live Teams/microphone capture, Bluetooth/USB switching, portals, cross-distribution acceptance and two-hour recording have not yet been validated in this Flatpak. It is not a Flathub listing or a daily-use reliability claim. Native agy recognition limitations remain unchanged.
 
 The tested bundle was downloaded to `~/Downloads/shrutadhara-flatpak/shrutadhara-experimental-x86_64.flatpak`; SHA256 `d9fa2c1b077cb6a2a738e5c00dffc39d674e91a26f2b0ba749a5351d1ecb2e56`. No new recording or hosted upload occurred during these packaging checks.
+
+
+## 2026-11-17 — public APT client acceptance
+
+[Published APT clients run 44110388557](https://github.com/Praneel7015/shrutadhara/actions/runs/44110388557) passed independently on `debian:13-slim` and `ubuntu:24.04`. Each disposable container downloaded the public repository key, matched its fingerprint to the source-controlled pin, configured the scoped source, verified repository metadata through APT, installed the published package by name, checked version/help and GTK/jsonschema/application imports, verified the desktop entry, and removed the package. No source or key was installed on the CachyOS workstation. This confirms package installation on supported systems after repository configuration; it does not validate meeting capture or recognition.
+
+Flathub requirements were researched separately. Its current policy prohibits AI-assisted manifests and agent submission/review interactions and requires disclosure of known generated application material. The current experimental manifest was AI-assisted and is not eligible as-is. No Flathub PR was created. See `docs/FLATHUB_READINESS.md` for the human-maintainer and technical requirements.
