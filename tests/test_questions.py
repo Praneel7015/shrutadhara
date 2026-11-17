@@ -38,7 +38,7 @@ def accepted(tmp_path, monkeypatch):
 def test_answer_only_uploads_full_transcript_and_retains_private_evidence(accepted):
     session, provider = accepted
     markdown = questions.ask(session, "When?")
-    assert "../../transcript/full-transcript.md#seg-000001" in markdown
+    assert "evidence.md#seg-000001" in markdown
     prompt, schema, workspace, cfg = provider.structured.call_args.args
     assert "Ship Friday." in prompt and "When?" in prompt
     assert (workspace / "request.json").exists()
@@ -126,3 +126,24 @@ def test_cli_ask_stdin(accepted, monkeypatch, capsys):
     monkeypatch.setattr(cli.sys, "stdin", io.StringIO("When?"))
     assert cli.main(["ask"]) == 0
     assert "Ship Friday" in capsys.readouterr().out
+
+
+def test_historical_answer_links_to_its_original_evidence_after_correction(accepted):
+    from shrutadhara.core import read_json
+
+    session, provider = accepted
+    answer = questions.ask(session, "When?")
+    workspace = provider.structured.call_args.args[2]
+    evidence = workspace / "evidence.md"
+    original = evidence.read_bytes()
+    snapshot = read_json(workspace / "evidence.json")
+    assert snapshot["segments"][0]["text"] == "Ship Friday."
+    assert "evidence.md#seg-000001" in answer
+    assert "../../transcript/" not in answer
+    atomic_json(
+        session / "transcript/transcript.json",
+        {"segments": [{"id": "seg-000001", "text": "Do not ship Friday."}]},
+    )
+    assert evidence.read_bytes() == original
+    assert "Do not ship" not in evidence.read_text()
+    assert read_json(workspace / "request.json")["evidence_sha256"]

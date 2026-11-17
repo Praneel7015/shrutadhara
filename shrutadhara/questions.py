@@ -10,6 +10,7 @@ from jsonschema import Draft202012Validator, ValidationError
 from .core import (
     MeetingError,
     atomic_json,
+    atomic_text,
     config,
     digest,
     locked,
@@ -17,6 +18,7 @@ from .core import (
     read_json,
 )
 from .providers import get_provider
+from .rendering import literal
 
 MAX_CONTEXT_BYTES = 180_000
 ANSWER_SCHEMA = {
@@ -129,6 +131,35 @@ def ask(session: Path, question: str, allow_partial: bool = False) -> str:
         before = digest(path)
         manifest_before = digest(manifest_path)
         workspace = private_dir(session / "questions" / uuid.uuid4().hex)
+        # Every answer owns an immutable rendering of the evidence it saw.
+        # IDs in the live transcript can be reassigned by correction imports.
+        snapshot_segments = [dict(item) for item in evidence]
+        snapshot = {
+            "source_fingerprint": source,
+            "transcript_sha256": before,
+            "partial": partial,
+            "segments": snapshot_segments,
+        }
+        atomic_json(workspace / "evidence.json", snapshot)
+        snapshot_lines = [
+            "# Question evidence snapshot",
+            "",
+            "> This evidence is the transcript revision used for this question.",
+            "",
+        ]
+        if partial:
+            snapshot_lines += ["> PARTIAL TRANSCRIPT: some audio was unprocessed.", ""]
+        for item in snapshot_segments:
+            snapshot_lines.extend(
+                [
+                    f'<a id="{item["id"]}"></a>',
+                    f"Segment {item['id']} — {item.get('start')} to {item.get('end')} seconds",
+                    "",
+                    literal(item.get("text") or ""),
+                    "",
+                ]
+            )
+        atomic_text(workspace / "evidence.md", "\n".join(snapshot_lines))
         atomic_json(
             workspace / "request.json",
             {
@@ -136,6 +167,8 @@ def ask(session: Path, question: str, allow_partial: bool = False) -> str:
                 "transcript_sha256": before,
                 "source_fingerprint": source,
                 "partial": partial,
+                "evidence_sha256": digest(workspace / "evidence.json"),
+                "evidence_markdown_sha256": digest(workspace / "evidence.md"),
             },
         )
         (workspace / "prompt.txt").write_text(prompt)
@@ -170,13 +203,8 @@ def ask(session: Path, question: str, allow_partial: bool = False) -> str:
         lines.append("")
         for claim in result["claims"]:
             # Escape model Markdown so prose cannot introduce unvalidated evidence links.
-            text = re.sub(r"([\\`*_{}\[\]()<>#!|])", r"\\\1", claim["text"]).replace(
-                "\n", " "
-            )
-            links = ", ".join(
-                f"[{i}](../../transcript/full-transcript.md#{i})"
-                for i in claim["evidence"]
-            )
+            text = literal(claim["text"], single_line=True)
+            links = ", ".join(f"[{i}](evidence.md#{i})" for i in claim["evidence"])
             lines.append(f"- {text} ({links})")
         if not result["answered"]:
             lines.append("The supplied transcript does not establish an answer.")

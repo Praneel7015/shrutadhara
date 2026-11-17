@@ -7,7 +7,7 @@ from pathlib import Path
 
 from jsonschema import Draft202012Validator
 
-from . import agy, audio, providers, sessions
+from . import agy, audio, output_cache, providers, sessions
 from .core import (
     MeetingError,
     atomic_json,
@@ -22,6 +22,11 @@ from .core import (
     read_json,
     run,
 )
+from .rendering import literal
+
+MAX_NOTES_CONTEXT_BYTES = 180_000
+NOTES_BLOCK_BYTES = 60_000
+
 
 NOTES_SCHEMA = {
     "type": "object",
@@ -356,7 +361,8 @@ def validate_transcription(result: dict, chunk: dict) -> None:
         if agy.is_limit(result["limitation"]):
             raise agy.AIError("Provider audio/context limit", limit=True)
         raise providers.CapabilityRefusal(
-            "Provider refused or did not fully process native audio; later submissions stopped", 6
+            "Provider refused or did not fully process native audio; later submissions stopped",
+            6,
         )
     last = -1
     duration = chunk["end"] - chunk["start"]
@@ -555,7 +561,7 @@ def render_transcript(session: Path, transcript: dict):
                 f"**[{timestamp(s['start'])}–{timestamp(s['end'])}] {s['speaker']}**"
                 + (" (uncertain)" if s["uncertain"] else ""),
                 "",
-                s["text"],
+                literal(s["text"]),
                 "",
             ]
         )
@@ -611,8 +617,9 @@ def generate_notes(session: Path, transcript: dict, cfg: dict, allow_partial: bo
     )
     final = session / "notes/notes.json"
     sessions.update(session, notes="running")
-    if final.exists() and read_json(final).get("fingerprint") == signature:
-        existing = read_json(final)["notes"]
+    cached = output_cache.read(session, final)
+    if cached and cached.get("fingerprint") == signature:
+        existing = cached["notes"]
         validate_notes(existing, segments)
         render_notes(session, transcript, existing)
         sessions.update(
@@ -629,10 +636,24 @@ def generate_notes(session: Path, transcript: dict, cfg: dict, allow_partial: bo
         "Do not turn repeated statements into agreement, consensus or a decision. A scheduled date alone is not evidence of a decision. "
         "Only explicit commitments or assigned/tracked tasks belong in action items; do not turn descriptive facts into tasks.\n"
     )
+
+    def bounded_prompt(prompt):
+        if len(prompt.encode("utf-8")) > MAX_NOTES_CONTEXT_BYTES:
+            raise MeetingError(
+                "Notes request exceeds the UTF-8 context budget; no oversized request was submitted",
+                6,
+            )
+        return prompt
+
     blocks, block, size = [], [], 0
     for segment in segments:
-        length = len(json.dumps(segment, ensure_ascii=False))
-        if block and size + length > 60000:
+        length = len(json.dumps(segment, ensure_ascii=False).encode("utf-8"))
+        if length > NOTES_BLOCK_BYTES:
+            raise MeetingError(
+                "A transcript segment exceeds the notes block byte budget; split or correct it before processing",
+                6,
+            )
+        if block and size + length > NOTES_BLOCK_BYTES:
             blocks.append(block)
             block, size = [], 0
         block.append(segment)
@@ -646,42 +667,54 @@ def generate_notes(session: Path, transcript: dict, cfg: dict, allow_partial: bo
             folder = private_dir(session / f"notes/intermediate/{index:05d}")
             key = fingerprint({"segments": group, "model": cfg["model"], "version": 1})
             p = folder / "records.json"
-            if p.exists() and read_json(p).get("fingerprint") == key:
-                value = read_json(p)["result"]
+            cached = output_cache.read(session, p)
+            if cached and cached.get("fingerprint") == key:
+                value = cached["result"]
             else:
                 value = adapter.structured(
-                    instructions
-                    + "Extract detailed evidence-linked topic records covering this whole transcript portion, including action and decision details.\n"
-                    + json.dumps(group, ensure_ascii=False),
+                    bounded_prompt(
+                        instructions
+                        + "Extract detailed evidence-linked topic records covering this whole transcript portion, including action and decision details.\n"
+                        + json.dumps(group, ensure_ascii=False)
+                    ),
                     TOPIC_SCHEMA,
                     folder,
                     cfg,
                 )
-                atomic_json(p, {"fingerprint": key, "result": value})
+            Draft202012Validator(TOPIC_SCHEMA).validate(value)
             valid_ids = {s["id"] for s in group}
             if any(i not in valid_ids for r in value["records"] for i in r["evidence"]):
                 raise MeetingError("Intermediate notes have invalid evidence", 6)
+            if not cached or cached.get("fingerprint") != key:
+                output_cache.write(session, p, {"fingerprint": key, "result": value})
             records.extend(value["records"])
         # Bound the final request, without silently truncating any intermediate records.
-        if len(json.dumps(records, ensure_ascii=False)) > 180000:
+        if (
+            len(json.dumps(records, ensure_ascii=False).encode("utf-8"))
+            > MAX_NOTES_CONTEXT_BYTES
+        ):
             raise MeetingError(
                 "Evidence records exceed notes context budget; all intermediate results retained",
                 6,
             )
     notes = adapter.structured(
-        instructions
-        + (
-            "Evidence records covering every transcript portion:\n"
-            if records is not None
-            else "Full transcript:\n"
-        )
-        + json.dumps(records if records is not None else segments, ensure_ascii=False),
+        bounded_prompt(
+            instructions
+            + (
+                "Evidence records covering every transcript portion:\n"
+                if records is not None
+                else "Full transcript:\n"
+            )
+            + json.dumps(
+                records if records is not None else segments, ensure_ascii=False
+            )
+        ),
         NOTES_SCHEMA,
         private_dir(session / "notes/ai"),
         cfg,
     )
     validate_notes(notes, segments)
-    atomic_json(final, {"fingerprint": signature, "notes": notes})
+    output_cache.write(session, final, {"fingerprint": signature, "notes": notes})
     render_notes(session, transcript, notes)
     sessions.update(
         session, notes="complete" if transcript["coverage_complete"] else "partial"
@@ -702,7 +735,7 @@ def render_notes(session: Path, transcript: dict, notes: dict):
     ]:
         lines = [f"# {title}", "", prefix]
         lines += [
-            f"- {r['text']} ({evidence_links(r['evidence'], by_id)})"
+            f"- {literal(r['text'], single_line=True)} ({evidence_links(r['evidence'], by_id)})"
             for r in notes[key]
         ]
         if not notes[key]:
@@ -710,7 +743,7 @@ def render_notes(session: Path, transcript: dict, notes: dict):
         atomic_text(session / "notes" / filename, "\n".join(lines) + "\n")
 
     def escape(text):
-        return (text or "Not specified").replace("|", "\\|").replace("\n", " ")
+        return literal(text or "Not specified", single_line=True)
 
     lines = [
         "# Action items",
@@ -818,7 +851,7 @@ def process(
                         # An obsolete cache may be corrupt; do not even parse it here.
                         result = imported[chunk["id"]]
                     else:
-                        record = read_json(output) if output.exists() else {}
+                        record = output_cache.read(session, output) or {}
                         if record.get("fingerprint") == signature:
                             result = record.get("result")
                         elif import_path:
@@ -842,9 +875,11 @@ def process(
                         raise MeetingError(
                             "Non-silent chunk produced no dialogue; review required", 6
                         )
-                    atomic_json(
+                    output_cache.write(
+                        session,
                         output,
                         {"fingerprint": signature, "identity": ident, "result": result},
+                        explicit_import=bool(import_path and chunk["id"] in imported),
                     )
                     accepted[chunk["id"]] = result
                 except MeetingError as exc:
@@ -874,6 +909,8 @@ def process(
                     failures.append({"chunk_id": chunk["id"], "error": str(exc)})
                     sessions.error(session, "transcription", f"{chunk['id']}: {exc}")
                     # Provider blocks/auth/capability errors should not trigger uploads of every remaining chunk.
+                    if isinstance(exc, output_cache.OutputIntegrityError):
+                        raise
                     if isinstance(exc, providers.CapabilityRefusal):
                         capability_refusal = exc
                         break
