@@ -77,6 +77,7 @@ def create(title: str = "Team meeting", options: dict | None = None) -> Path:
             "devices": {},
             "epochs": [],
             "gaps": [],
+            "monitor_events": [],
             "errors": [],
             "artifacts": {},
             "coverage_complete": False,

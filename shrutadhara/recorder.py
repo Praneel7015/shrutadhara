@@ -285,6 +285,7 @@ class Supervisor:
         self.started = 0.0
         self.epochs = self.data.get("epochs", [])
         self.gaps = self.data.get("gaps", [])
+        self.monitor_events = self.data.get("monitor_events", [])
         self.health = {}
         self.log = None
         self.control = None
@@ -313,6 +314,7 @@ class Supervisor:
                 "health": self.health,
                 "progress_age_seconds": round(elapsed_time() - self.progress_at, 1),
                 "gaps": len(self.gaps),
+                "monitor_delays": len(self.monitor_events),
                 "microphone_notice": "Local microphone is captured even while muted in Teams",
             },
         )
@@ -394,7 +396,8 @@ class Supervisor:
                     sessions.update(self.path, recording="failed")
                 elif state == "recording":
                     sessions.update(self.path, recording="stopping")
-                sessions.update(self.path, ended_at=now(), duration_seconds=duration, gaps=self.gaps)
+                sessions.update(self.path, ended_at=now(), duration_seconds=duration,
+                                gaps=self.gaps, monitor_events=self.monitor_events)
             except (MeetingError, OSError, ValueError, KeyError):
                 self.fatal = True
                 metadata_ok = False
@@ -482,16 +485,24 @@ class Supervisor:
         t = elapsed_time()
         monotonic = time.monotonic()
         suspended = (t - self.last_poll) - (monotonic - self.last_monotonic)
-        if suspended > 1 or t - self.last_poll > 8:
+        if suspended > 1:
             self.gaps.append(
                 {
                     "start": self.last_poll - self.started,
                     "end": t - self.started,
                     "track": "both",
-                    "reason": ("System suspend; inspect audio" if suspended > 1 else
-                               "Scheduling interruption; inspect audio"),
+                    "reason": "System suspend; inspect audio",
                 }
             )
+        elif t - self.last_poll > 8:
+            # Monitoring and capture are separate processes. A slow inventory
+            # poll does not establish missing PCM or a break in its timestamps.
+            self.monitor_events.append({
+                "start": self.last_poll - self.started,
+                "end": t - self.started,
+                "kind": "poll_delayed",
+                "reason": "Recording monitor delayed; audio continuity unverified",
+            })
         self.last_poll = t
         self.last_monotonic = monotonic
         audio.disk_check(self.path, self.cfg["reserve_bytes"])
@@ -584,7 +595,7 @@ class Supervisor:
                     "reason": "Teams playback unavailable or selection ambiguous",
                 }
             )
-        sessions.update(self.path, gaps=self.gaps)
+        sessions.update(self.path, gaps=self.gaps, monitor_events=self.monitor_events)
         self.snapshot()
 
     def execute(self):

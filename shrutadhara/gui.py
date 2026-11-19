@@ -513,7 +513,8 @@ def launch() -> int:
                     self.health_label.set_text(
                         "Recording status is stale; audio health is unknown. Check status or stop recording."
                         if state.get("health_stale") else
-                        f"Microphone: {mic} · Participants: {remote} · Gaps: {state.get('gaps', 0)}"
+                        f"Microphone: {mic} · Participants: {remote} · Audio warnings: {state.get('gaps', 0)}"
+                        f" · Monitor delays: {state.get('monitor_delays', 0)}"
                     )
                 elif data:
                     health_text = (

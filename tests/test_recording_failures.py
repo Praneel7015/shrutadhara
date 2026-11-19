@@ -221,6 +221,22 @@ def test_reconcile_detects_suspend_when_monotonic_does_not_advance(inv, monkeypa
     supervisor.selector.close()
 
 
+def test_slow_monitor_does_not_claim_audio_loss(inv, monkeypatch):
+    supervisor, _, _ = synthetic_routed_supervisor(inv, monkeypatch)
+    monkeypatch.setattr(recorder, "elapsed_time", lambda: 120)
+    monkeypatch.setattr(recorder.time, "monotonic", lambda: 120)
+    supervisor.reconcile()
+    assert supervisor.gaps == []
+    assert supervisor.monitor_events == [{
+        "start": 5, "end": 20, "kind": "poll_delayed",
+        "reason": "Recording monitor delayed; audio continuity unverified",
+    }]
+    metadata = read_json(supervisor.path / "session.json")
+    assert metadata["gaps"] == []
+    assert metadata["monitor_events"] == supervisor.monitor_events
+    supervisor.selector.close()
+
+
 @pytest.mark.parametrize("change", ["loopback", "device-incarnation"])
 def test_reconcile_repairs_lost_route_or_recreated_device(inv, monkeypatch, change):
     supervisor, route, modules = synthetic_routed_supervisor(inv, monkeypatch)

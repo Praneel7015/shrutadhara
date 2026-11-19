@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Report delayed health-monitor polls separately from audio-gap warnings; a scheduling delay alone does not establish missing capture audio.
+
 - Add an experimental x86_64 Flatpak for recording and local preparation, with explicit AI/background-command restrictions and window lifetime protection.
 - Build and test the installed Flatpak runtime with pinned audio/Python dependencies and synthetic codec checks.
 - Publish a signed experimental APT archive with integrity verification, expiry refresh and disposable installation tests.
