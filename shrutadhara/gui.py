@@ -494,7 +494,12 @@ def launch() -> int:
                     )
                     self.record_button.remove_css_class("destructive-action")
                     self.record_button.add_css_class("suggested-action")
-                if state.get("active"):
+                if self.recording == "stopping":
+                    self.health_label.set_text(
+                        "Stopping capture and finalizing local audio files. "
+                        "Original archives are retained; wait for finalization before processing."
+                    )
+                elif state.get("active"):
                     health = state.get("health", {})
                     mic = (
                         "system-muted"
