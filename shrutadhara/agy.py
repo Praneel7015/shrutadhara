@@ -24,7 +24,7 @@ from .core import (
     run,
 )
 
-ADAPTER_VERSION = 1
+ADAPTER_VERSION = 2
 TRANSCRIPT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -401,6 +401,10 @@ def transcription_prompt(path: Path, duration: float) -> str:
 
 def probe_capability(sample: Path, expected: str, workspace: Path, cfg: dict) -> dict:
     from .audio import validate_audio
+    from .processing import validate_transcription
+
+    if not expected.strip():
+        raise MeetingError("Capability sample requires exact known spoken text", 2)
 
     cfg = {
         **cfg,
@@ -427,7 +431,7 @@ def probe_capability(sample: Path, expected: str, workspace: Path, cfg: dict) ->
         timeout=60,
     )
     health = validate_audio(staged)
-    if health["duration_seconds"] > 30 or health["tracks"][0]["silent"]:
+    if not 1 <= health["duration_seconds"] <= 30 or health["tracks"][0]["silent"]:
         raise MeetingError(
             "Capability sample must contain 1–30 seconds of known speech", 2
         )
@@ -448,18 +452,24 @@ def probe_capability(sample: Path, expected: str, workspace: Path, cfg: dict) ->
     def norm(text):
         return " ".join(re.findall(r"\w+", text.casefold()))
 
-    passed = (
-        result["audio_received"]
-        and result["fully_processed"]
-        and not result["limitation"]
-        and norm(recognized) == norm(expected)
-    )
+    valid_transcription = True
+    try:
+        validate_transcription(result, {"start": 0, "end": health["duration_seconds"]})
+    except MeetingError:
+        valid_transcription = False
+    checks = {
+        "valid_transcription": valid_transcription,
+        "no_uncertain_segments": not any(s["uncertain"] for s in result["segments"]),
+        "exact_reference_match": norm(recognized) == norm(expected),
+    }
+    passed = all(checks.values())
     record = {
         "identity": key,
         "passed": bool(passed),
         "tested_at": now(),
         "sample_sha256": digest(staged),
         "expected_sha256": fingerprint(expected),
+        "checks": checks,
         "reason": "Clean exact known-speech test"
         if passed
         else "Known-speech test failed; audio adapter remains blocked",

@@ -142,6 +142,53 @@ def test_accuracy_failure_revokes_previously_passed_probe(monkeypatch, tmp_path)
     assert not agy.capable() and read_json(path)["invalidated_at"]
 
 
+@pytest.mark.parametrize("change,passed", [
+    ({}, True),
+    ({"uncertain": True}, False),
+    ({"end": 11}, False),
+    ({"end": 0}, False),
+    ({"start": float("nan")}, False),
+    ({"text": "Different words"}, False),
+])
+def test_probe_requires_exact_certain_valid_transcription(tmp_path, monkeypatch, change, passed):
+    from shrutadhara import audio
+
+    def convert(command, **kwargs):
+        __import__("pathlib").Path(command[-1]).write_bytes(b"synthetic mocked audio")
+
+    monkeypatch.setattr(agy, "run", convert)
+    monkeypatch.setattr(audio, "validate_audio", lambda _: {
+        "duration_seconds": 10, "tracks": [{"silent": False}],
+    })
+    monkeypatch.setattr(agy, "identity", lambda *_: {"version": "test"})
+    monkeypatch.setattr(agy, "invoke", lambda *a, **kw: {
+        "audio_received": True, "fully_processed": True, "limitation": "",
+        "segments": [{"start": 0, "end": 5, "text": "Known words.", "uncertain": False, **change}],
+    })
+    result = agy.probe_capability(tmp_path / "sample.wav", "known words", tmp_path / "work", config())
+    assert result["passed"] is passed
+    assert agy.capable() is passed
+
+
+def test_probe_rejects_empty_reference_without_upload(tmp_path, monkeypatch):
+    monkeypatch.setattr(agy, "invoke", lambda *a, **kw: pytest.fail("No upload"))
+    with pytest.raises(MeetingError, match="exact known spoken text"):
+        agy.probe_capability(tmp_path / "sample.wav", " ", tmp_path / "work", config())
+    assert not (tmp_path / "work").exists()
+
+
+def test_probe_rejects_subsecond_sample_without_upload(tmp_path, monkeypatch):
+    from shrutadhara import audio
+
+    monkeypatch.setattr(agy, "run", lambda *a, **kw: None)
+    monkeypatch.setattr(audio, "validate_audio", lambda _: {
+        "duration_seconds": .5, "tracks": [{"silent": False}],
+    })
+    monkeypatch.setattr(agy, "invoke", lambda *a, **kw: pytest.fail("No upload"))
+    with pytest.raises(MeetingError, match="1–30 seconds"):
+        agy.probe_capability(tmp_path / "sample.wav", "Known words", tmp_path / "work", config())
+
+
 def test_timeout_kills_process_group_and_stops_after_three_attempts(
     tmp_path, monkeypatch
 ):

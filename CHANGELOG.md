@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Require valid timestamps, no uncertain segments and an exact reference match in the known-speech capability probe; enforce 1–30 second samples and invalidate older capability approvals.
+
 - Report delayed health-monitor polls separately from audio-gap warnings; a scheduling delay alone does not establish missing capture audio.
 
 - Add an experimental x86_64 Flatpak for recording and local preparation, with explicit AI/background-command restrictions and window lifetime protection.
